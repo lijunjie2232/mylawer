@@ -1,0 +1,36 @@
+{
+  "name": "law_assistant",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "bin": {
+    "law-assistant": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "nodemon --exec ts-node src/index.ts",
+    "cli": "ts-node src/index.ts",
+    "test": "playwright test",
+    "test:web-search": "ts-node tests/webSearch.test.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "GPL-3.0-only",
+  "packageManager": "pnpm@10.29.2",
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@types/node": "^25.2.3",
+    "nodemon": "^3.1.11",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.1.24",
+    "@langchain/openai": "^1.2.7",
+    "dotenv": "^17.3.1",
+    "langchain": "^1.2.24",
+    "playwright": "^1.58.2",
+    "zod": "^4.3.6"
+  }
+}
