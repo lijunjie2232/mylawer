@@ -1,0 +1,80 @@
+# Dependencies
+node_modules
+**/node_modules
+
+# Build outputs
+dist
+frontend/dist
+**/dist
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory
+coverage
+**/coverage
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Docker
+Dockerfile
+docker-compose*.yml
+# Don't exclude docker-start.sh as it's needed in container
+# docker-start.sh
+test-docker.sh
+
+# Documentation
+*.md
+docs
+!README.md
+
+# Test files
+tests
+test_*.ts
+*_test.ts
+demo_*.ts
+playwright.config.ts
+
+# Scripts
+# Don't exclude all scripts as some are needed in container
+# scripts
+!scripts/init-admin.ts
+!scripts/run-migrations.ts
+
+# Database
+*.db
+*.sqlite
+prisma/migrations
+
+# Git
+.git
+.gitignore
+
+# Other
+.nyc_output
+.parcel-cache
+.cache
+
+volumn/
