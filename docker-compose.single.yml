@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  # Single container with app + PostgreSQL
+  law-assistant-single:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: law-assistant-single
+    env_file:
+      - .env.docker
+    ports:
+      - "3000:3000"
+      - "5432:5432"
+    volumes:
+      # Persist PostgreSQL data
+      - postgres_data:/var/lib/postgresql/data
+      # Persist Playwright browsers
+      - playwright_browsers:/root/.cache/ms-playwright
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  playwright_browsers:
+    driver: local
