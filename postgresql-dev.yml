@@ -1,0 +1,13 @@
+services:
+  postgres:
+    image: postgres:18.3-alpine
+    container_name: las-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: "StrongPassword123!"
+      POSTGRES_USER: law_user
+      POSTGRES_DB: law_assistant
+    volumes:
+      - ~/volumn/postgresql/data:/var/lib/postgresql/data
+    restart: unless-stopped
