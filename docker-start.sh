@@ -71,6 +71,8 @@ if [ ! -f /var/lib/postgresql/data/PG_VERSION ]; then
     # Stop PostgreSQL
     echo "Stopping PostgreSQL..."
     su - postgres -c "/usr/lib/postgresql/*/bin/pg_ctl -D /var/lib/postgresql/data stop"
+    RUN_MIGRATIONS=true
+    INIT_ADMIN=true
 else
     echo "PostgreSQL data already exists, skipping initialization"
     
