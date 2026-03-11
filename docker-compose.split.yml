@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database Service
+  postgres:
+    image: postgres:18.3-alpine
+    container_name: law-assistant-postgres
+    env_file:
+      - .env.docker
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-law_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-"StrongPassword123!"}
+      POSTGRES_DB: ${POSTGRES_DB:-law_assistant}
+    # ports:
+    #   - "5432:5432"
+    volumes:
+      - ~/volumn/postgresql/data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-law_user} -d ${POSTGRES_DB:-law_assistant}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - law-assistant-network
+
+  # Application Service
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    container_name: law-assistant-app
+    env_file:
+      - .env.docker
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-law_user}:${POSTGRES_PASSWORD:-law_password}@postgres:5432/${POSTGRES_DB:-law_assistant}?schema=public
+      DEFAULT_ADMIN_EMAIL: ${DEFAULT_ADMIN_EMAIL:-admin@example.com}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-Admin@123}
+    ports:
+      - "3000:3000"
+    volumes:
+      # Persist Playwright browsers
+      - playwright_browsers:/root/.cache/ms-playwright
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - law-assistant-network
+
+volumes:
+  # postgres_data:
+  #   driver: local
+  playwright_browsers:
+    driver: local
+
+networks:
+  law-assistant-network:
+    driver: bridge
