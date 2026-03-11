@@ -70,6 +70,7 @@ const App: React.FC = () => {
   const [isModelsLoading, setIsModelsLoading] = useState(true)
   const [sessionId, setSessionId] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
+  const [demoWarningOpen, setDemoWarningOpen] = useState(true)
   
   // テーマ設定
   const prefersDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -642,6 +643,33 @@ const App: React.FC = () => {
         >
           <Alert onClose={() => setError(null)} severity="error" sx={{ width: '100%' }}>
             {error}
+          </Alert>
+        </Snackbar>
+
+        {/* デモ警告通知 */}
+        <Snackbar
+          open={demoWarningOpen}
+          autoHideDuration={15000}
+          onClose={() => setDemoWarningOpen(false)}
+          anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        >
+          <Alert 
+            onClose={() => setDemoWarningOpen(false)} 
+            severity="warning"
+            sx={{ width: '100%' }}
+          >
+            <Typography variant="body2">
+              <strong>デモ環境についてのお知らせ：</strong>
+            </Typography>
+            <Typography variant="body2">
+              これはデモ環境のため、LLM の実行速度が遅い場合があります。
+            </Typography>
+            <Typography variant="body2">
+              おすすめの LLM モデルは <strong>gpt-oss:20b</strong> です。
+            </Typography>
+            <Typography variant="body2">
+              モデルの初回ロード時は、GPU が使用されている場合、遅くなったり失敗したりする可能性があります。
+            </Typography>
           </Alert>
         </Snackbar>
       </Box>
