@@ -271,6 +271,7 @@ export class WebSearchTool extends DynamicTool {
         firefoxUserPrefs: {
           'intl.accept_languages': this.language,
         },
+        proxy: { server: "socks5://172.17.0.1:7890" },
       });
 
       // 创建上下文并移除 webdriver 特征
