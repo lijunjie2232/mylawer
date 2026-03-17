@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * 初始化管理员账户脚本
+ * 管理者アカウント初期化スクリプト
  * 
  * 使用方法:
  * npx tsx scripts/init-admin.ts
@@ -11,7 +11,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from 'bcryptjs';
 
-// 创建 Prisma 客户端实例
+// Prisma クライアントインスタンスの作成
 const connectionString = `${process.env.DATABASE_URL}`;
 const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });
@@ -19,49 +19,49 @@ const prisma = new PrismaClient({ adapter });
 async function initializeAdmin() {
   try {
     console.log('========================================');
-    console.log('初始化默认管理员账户');
+    console.log('デフォルト管理者アカウントの初期化');
     console.log('========================================\n');
 
-    // 连接数据库
-    console.log('正在连接数据库...');
+    // データベース接続
+    console.log('データベース接続中...');
     await prisma.$connect();
-    console.log('✓ 数据库连接成功\n');
+    console.log('✓ データベース接続成功\n');
 
-    // 检查是否存在 ADMIN 角色
+    // ADMIN ロールが存在するか確認
     let adminRole = await prisma.role.findUnique({
       where: { name: 'ADMIN' }
     });
 
     if (!adminRole) {
-      console.log('正在创建 ADMIN 角色...');
+      console.log('ADMIN ロール作成中...');
       adminRole = await prisma.role.create({
         data: {
           name: 'ADMIN',
-          description: '系统管理员',
-          permissions: ['*'] // 所有权限
+          description: 'システム管理者',
+          permissions: ['*'] // すべての権限
         }
       });
-      console.log('✓ ADMIN 角色创建成功\n');
+      console.log('✓ ADMIN ロール作成成功\n');
     } else {
-      console.log('✓ ADMIN 角色已存在\n');
+      console.log('✓ ADMIN ロールは既に存在します\n');
     }
 
-    // 检查是否已存在管理员账户
+    // 管理者アカウントが既に存在するか確認
     const existingAdmin = await prisma.user.findFirst({
       where: { email: 'admin@example.com' }
     });
 
     if (existingAdmin) {
-      console.log('✓ 管理员账户已存在，跳过创建');
+      console.log('✓ 管理者アカウントは既に存在します、スキップします');
       console.log(`邮箱：${existingAdmin.email}`);
     } else {
-      // 创建默认管理员账户
-      console.log('正在创建默认管理员账户...');
+      // デフォルト管理者アカウントを作成
+      console.log('デフォルト管理者アカウント作成中...');
       
       const defaultAdminEmail = process.env.DEFAULT_ADMIN_EMAIL || 'admin@example.com';
       const defaultAdminPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'Admin@123';
       
-      // 密码加密
+      // パスワードのハッシュ化
       const saltRounds = 10;
       const passwordHash = await bcrypt.hash(defaultAdminPassword, saltRounds);
       
@@ -75,17 +75,17 @@ async function initializeAdmin() {
         }
       });
       
-      console.log('✓ 管理员账户创建成功\n');
+      console.log('✓ 管理者アカウント作成成功\n');
       console.log('\n========================================');
-      console.log('✓ 初始化完成！');
+      console.log('✓ 初期化完了！');
       console.log('========================================');
-      console.log('\n默认管理员账户信息:');
+      console.log('\nデフォルト管理者アカウント情報:');
       console.log(`邮箱：${defaultAdminEmail}`);
       console.log(`密码：${defaultAdminPassword}`);
-      console.log('\n⚠️  重要提示：请在首次登录后立即修改密码！\n');
+      console.log('\n⚠️  重要：初回ログイン後、直ちにパスワードを変更してください！\n');
     }
 
-    // 断开数据库连接
+    // データベース接続を切断
     await prisma.$disconnect();
     
     process.exit(0);
@@ -97,5 +97,5 @@ async function initializeAdmin() {
   }
 }
 
-// 运行初始化
+// 初期化を実行
 initializeAdmin();
