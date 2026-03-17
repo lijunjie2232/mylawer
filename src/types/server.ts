@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 
-// LINE Bot 消息类型
+// LINE Bot メッセージタイプ
 export interface LineMessage {
   type: string;
   id: string;

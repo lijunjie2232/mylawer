@@ -19,7 +19,7 @@ export interface AssistantConfig {
   tools?: string[];
 }
 
-// 模型相关接口
+// モデル関連インターフェース
 export interface ModelInfo {
   name: string;
   displayName: string;
@@ -36,7 +36,7 @@ export interface ModelListResponse {
   timestamp: string;
 }
 
-// API请求/响应接口
+// API リクエスト/レスポンスインターフェース
 export interface LegalQueryRequest {
   question: string;
   model?: string;
@@ -61,7 +61,7 @@ export interface ModelsApiResponse {
   error?: string;
 }
 
-// LLM API 返回的原始模型数据格式
+// LLM API から返される元のモデルデータ形式
 export interface LlmModel {
   id: string;
   object: string;

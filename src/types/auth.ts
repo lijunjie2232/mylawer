@@ -1,7 +1,7 @@
-// 用户角色枚举
+// ユーザーロール列挙型
 export type UserRole = 'USER' | 'ADMIN';
 
-// 用户基本信息
+// ユーザー基本情報
 export interface User {
   id: string;
   email: string;
@@ -13,7 +13,7 @@ export interface User {
   updatedAt: Date;
 }
 
-// 数据库中的用户模型（包含密码哈希）
+// データベース内のユーザーモデル（パスワードハッシュを含む）
 export interface UserWithPasswordHash {
   id: string;
   email: string;
@@ -27,7 +27,7 @@ export interface UserWithPasswordHash {
   updatedAt: Date;
 }
 
-// 角色信息
+// ロール情報
 export interface Role {
   id: string;
   name: UserRole;
@@ -37,7 +37,7 @@ export interface Role {
   updatedAt: Date;
 }
 
-// JWT Payload
+// JWT ペイロード
 export interface JWTPayload {
   userId: string;
   email: string;
@@ -46,20 +46,20 @@ export interface JWTPayload {
   exp?: number;
 }
 
-// 登录请求
+// ログインリクエスト
 export interface LoginRequest {
   email: string;
   password: string;
 }
 
-// 注册请求
+// 登録リクエスト
 export interface SignupRequest {
   email: string;
   password: string;
   name: string;
 }
 
-// 登录响应
+// ログインレスポンス
 export interface LoginResponse {
   success: boolean;
   token: string;
@@ -68,7 +68,7 @@ export interface LoginResponse {
   timestamp: string;
 }
 
-// 注册响应
+// 登録レスポンス
 export interface SignupResponse {
   success: boolean;
   message: string;
@@ -76,14 +76,14 @@ export interface SignupResponse {
   timestamp: string;
 }
 
-// 用户信息响应
+// ユーザープロファイルレスポンス
 export interface UserProfileResponse {
   success: boolean;
   user: User;
   timestamp: string;
 }
 
-// 管理员 - 用户列表响应
+// 管理者 - ユーザーリストレスポンス
 export interface UserListResponse {
   success: boolean;
   users: User[];
@@ -91,7 +91,7 @@ export interface UserListResponse {
   timestamp: string;
 }
 
-// 管理员 - 更新用户请求
+// 管理者 - ユーザー更新リクエスト
 export interface UpdateUserRequest {
   email?: string;
   name?: string;
@@ -99,12 +99,12 @@ export interface UpdateUserRequest {
   isActive?: boolean;
 }
 
-// Token 验证中间件的 Request 扩展
+// トークン検証ミドルウェアの リクエスト拡張
 export interface AuthenticatedRequest {
   user?: JWTPayload;
 }
 
-// 服务器统计信息
+// サーバー統計情報
 export interface ServerStats {
   uptime: number;
   memory: {
@@ -117,7 +117,7 @@ export interface ServerStats {
   cpuCores: number;
 }
 
-// 管理员仪表板响应
+// 管理者ダッシュボードレスポンス
 export interface DashboardResponse {
   success: boolean;
   serverInfo: ServerStats;
