@@ -48,7 +48,7 @@ export class WebpageLoaderTool extends DynamicTool {
   }
 
   /**
-   * 根据语言代码获取时区 ID
+   * 言語コードからタイムゾーン ID を取得
    */
   private getTimezoneId(language: string): string {
     const lang = language.toLowerCase();
@@ -63,24 +63,36 @@ export class WebpageLoaderTool extends DynamicTool {
   }
 
   /**
-   * 使用 Playwright 加载网页
+   * Playwright を使用してウェブページを読み込み
    */
   private async loadWebpageWithPlaywright(url: string): Promise<string> {
     let browser;
     try {
-      Logger.info('开始使用 Playwright 加载网页', { url });
+      Logger.info('Playwright でウェブページの読み込みを開始します', { url });
 
-      // 启动浏览器
+      // ブラウザを起動
       browser = await chromium.launch({
         headless: this.headless,
         channel: 'chrome',
-        args: ['--lang=' + this.language],
+        args: [
+          '--lang=' + this.language,
+          '--disable-gpu',
+          '--disable-dev-shm-usage',
+          '--disable-setuid-sandbox',
+          '--no-first-run',
+          '--no-sandbox',
+          '--no-zygote',
+          '--deterministic-fetch',
+          '--disable-features=IsolateOrigins',
+          '--disable-site-isolation-trials',
+        ],
         firefoxUserPrefs: {
           'intl.accept_languages': this.language,
         },
+        // proxy: { server: "socks5://172.17.0.1:7890"},
       });
 
-      // 创建上下文并移除 webdriver 特征
+      // コンテキストを作成し、webdriver の特徴を削除
       const context = await browser.newContext({
         locale: this.language,
         timezoneId: this.getTimezoneId(this.language)
@@ -107,10 +119,10 @@ export class WebpageLoaderTool extends DynamicTool {
         'Accept-Language': `${this.language},${this.language.split('-')[0] || 'ja'};q=0.9,en;q=0.8`
       });
 
-      // 1. 阻止资源加载（网络层面）- 在请求发起前拦截图片、字体、CSS 等资源
+      // 1. リソースの読み込みをブロック（ネットワークレベル）- リクエストが送信される前に画像、フォント、CSS などのリソースをインターセプト
       await page.route('**/*', (route) => {
         const resourceType = route.request().resourceType();
-        // 阻止图片、媒体、字体和样式表，从源头阻止数据下载，大幅提升加载速度
+        // 画像、メディア、フォント、スタイルシートをブロックし、データダウンロードを根本から防ぎ、読み込み速度を大幅に向上
         if (['image', 'media', 'font', 'stylesheet'].includes(resourceType)) {
           route.abort();
         } else {
@@ -118,16 +130,16 @@ export class WebpageLoaderTool extends DynamicTool {
         }
       });
 
-      // 访问页面
+      // ページにアクセス
       const response = await page.goto(url, {
         waitUntil: 'networkidle',
         timeout: this.timeout
       });
 
-      // 等待页面基本加载
+      // 基本的なページの読み込みを待つ
       await page.waitForTimeout(1000);
 
-      // 2. 通过 JS 注入清理 DOM（页面层面）- 清理已下载的 DOM 节点
+      // 2. JS インジェクトにより DOM をクリーンアップ（ページレベル）- ダウンロード済みの DOM ノードをクリーンアップ
       await page.evaluate(() => {
         // 定义需要清理的标签类型
         const tagsToRemove = ['img', 'svg', 'canvas', 'video', 'picture', 'iframe', 'object'];
@@ -136,9 +148,9 @@ export class WebpageLoaderTool extends DynamicTool {
           document.querySelectorAll(tag).forEach(el => el.remove());
         });
       
-        // 可选：移除所有背景图片
+        // オプション：すべての背景画像を削除
         document.querySelectorAll('*').forEach(el => {
-          // 检查是否为 HTMLElement 以访问 style 属性
+          // HTMLElement かどうかをチェックして style プロパティにアクセス
           if (el instanceof HTMLElement) {
             const computedStyle = getComputedStyle(el);
             if (computedStyle.backgroundImage !== 'none') {
@@ -147,11 +159,11 @@ export class WebpageLoaderTool extends DynamicTool {
           }
         });
               
-        // 移除空的容器元素，清理布局空隙
+        // 空のコンテナ要素を削除してレイアウトの隙間をクリーンアップ
         document.querySelectorAll('*').forEach(el => {
           if (!el.hasChildNodes() && !el.textContent?.trim()) {
             const tagName = el.tagName.toLowerCase();
-            // 保留一些可能有语义的空标签
+            // いくつかの意味のある空タグは保持
             if (!['br', 'hr', 'input', 'meta', 'link'].includes(tagName)) {
               el.remove();
             }
@@ -159,10 +171,10 @@ export class WebpageLoaderTool extends DynamicTool {
         });
       });
 
-      // 等待 DOM理完成
+      // DOM の処理完了を待つ
       await page.waitForTimeout(500);
 
-      // 获取页面内容
+      // ページコンテンツを取得
       const html = await page.content();
       const pageTitle = await page.title();
       const contentType = response?.headers()['content-type'] || 'unknown';
@@ -181,7 +193,7 @@ export class WebpageLoaderTool extends DynamicTool {
       $('aside').remove(); // 移除侧边栏
       $('header').remove(); // 移除页眉（可能包含大量导航元素）
 
-      // 提取主要内容区域
+      // メインコンテンツエリアを抽出
       let contentElement = $('main').first();
       if (contentElement.length === 0) {
         contentElement = $('article').first();
@@ -196,16 +208,16 @@ export class WebpageLoaderTool extends DynamicTool {
       // 提取文本内容
       const textContent = contentElement.text().trim();
 
-      // 如果文本内容太少，使用整个 body
+      // テキストコンテンツが少なすぎる場合は body 全体を使用
       let finalText = textContent;
       if (textContent.length < 100) {
         finalText = $('body').text().trim();
       }
 
-      // 清理文本
+      // テキストをクリーンアップ
       finalText = finalText.replace(/\s+/g, ' ').trim();
 
-      // 创建 LangChain Document 对象
+      // LangChain Document オブジェクトを作成
       const doc = new Document({
         pageContent: finalText,
         metadata: {
@@ -250,23 +262,23 @@ export class WebpageLoaderTool extends DynamicTool {
   }
 
   /**
-   * 使用 axios 加载网页（原有方法）
+   * axios を使用してウェブページを読み込み（元の方法）
    */
   private async loadWebpageWithAxios(url: string): Promise<string> {
     try {
-      Logger.info('开始加载网页', { url });
+      Logger.info('ウェブページの読み込みを開始します', { url });
 
-      // 验证 URL 格式
+      // URL 形式を検証
       try {
         new URL(url);
       } catch (error) {
         return JSON.stringify({
           success: false,
-          error: '无效的 URL 格式'
+          error: '無効な URL 形式'
         } as WebpageLoadResult);
       }
 
-      // 使用 axios 获取网页内容
+      // axios を使用してウェブページコンテンツを取得
       const response = await axios.get(url, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -282,17 +294,17 @@ export class WebpageLoaderTool extends DynamicTool {
 
       const html = response.data;
 
-      // 使用 cheerio 解析 HTML 并提取文本
+      // cheerio を使用して HTML を解析し、テキストを抽出
       const $ = cheerio.load(html);
 
-      // 移除脚本和样式标签
+      // スクリプトとスタイルタグを削除
       $('script').remove();
       $('style').remove();
-      $('nav').remove(); // 移除导航栏
-      $('footer').remove(); // 移除页脚
-      $('aside').remove(); // 移除侧边栏
+      $('nav').remove(); // ナビゲーションバーを削除
+      $('footer').remove(); // フッターを削除
+      $('aside').remove(); // サイドバーを削除
 
-      // 提取主要内容区域（如果有）
+      // メインコンテンツエリアを抽出（ある場合）
       let contentElement = $('main').first();
       if (contentElement.length === 0) {
         contentElement = $('article').first();
@@ -304,19 +316,19 @@ export class WebpageLoaderTool extends DynamicTool {
         contentElement = $('body');
       }
 
-      // 提取文本内容
+      // テキストコンテンツを抽出
       const textContent = contentElement.text().trim();
-
-      // 如果文本内容太少，使用整个body
+      
+      // テキストコンテンツが少なすぎる場合は body 全体を使用
       let finalText = textContent;
       if (textContent.length < 100) {
         finalText = $('body').text().trim();
       }
 
-      // 清理文本（移除多余空白字符）
+      // テキストをクリーンアップ（余分な空白文字を削除）
       finalText = finalText.replace(/\s+/g, ' ').trim();
 
-      // 创建 LangChain Document 对象
+      // LangChain Document オブジェクトを作成
       const doc = new Document({
         pageContent: finalText,
         metadata: {
@@ -357,7 +369,7 @@ export class WebpageLoaderTool extends DynamicTool {
   }
 
   /**
-   * 加载网页主方法（根据配置选择使用 Playwright 或 axios）
+   * ウェブページを読み込むメインメソッド（設定に応じて Playwright または axios を使用）
    */
   async loadWebpage(url: string): Promise<string> {
     if (this.usePlaywright) {
