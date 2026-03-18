@@ -103,7 +103,7 @@ export class Server {
       Logger.info('データベース接続完了');
     } catch (error) {
       Logger.error('データベース接続失敗', { error: (error as Error).message });
-      // 数据库连接失败不阻止服务器启动，但记录错误
+      // データベース接続の失敗はサーバー起動を妨げないが、エラーを記録する
     }
   }
 
@@ -181,7 +181,7 @@ export class Server {
       }
     });
 
-    // 前端静态文件服务
+    // フロントエンド静的ファイルサービス
     // Try multiple paths for different deployment scenarios
     const possiblePaths = [
       path.join(__dirname, '../frontend/dist'),
@@ -199,10 +199,10 @@ export class Server {
 
     Logger.info(`Serving frontend from: ${frontendDistPath}`);
 
-    // 提供前端静态文件
+    // フロントエンド静的ファイルを提供する
     this.app.use(express.static(frontendDistPath));
 
-    // API 信息路由（移到后面）
+    // API 情報ルート（後に移動）
     this.app.get('/api/info', (req: Request, res: Response) => {
       res.json({
         message: '法的アシスタントサーバー',
@@ -212,17 +212,17 @@ export class Server {
       });
     });
 
-    // 模型列表 API 路由
+    // モデルリスト API ルート
     /**
      * @openapi
      * /models:
      *   get:
-     *     summary: 获取可用模型列表
-     *     description: 查询 LLM API 获取实际可用的模型列表
+     *     summary: 利用可能なモデルリストの取得
+     *     description: LLM API にアクセスして実際に利用可能なモデルリストを取得
      *     tags: [Models]
      *     responses:
      *       200:
-     *         description: 成功获取模型列表
+     *         description: モデルリストの取得成功
      *         content:
      *           application/json:
      *             schema:
@@ -232,13 +232,13 @@ export class Server {
      */
     this.app.get('/models', async (req: Request, res: Response): Promise<void> => {
       try {
-        Logger.info('获取模型列表请求');
+        Logger.info('モデルリスト取得リクエスト');
     
-        // 确保 ModelManager 已初始化
+        // ModelManager が初期化されていることを確認
         const modelManager = ModelManager.getInstance();
         await modelManager.initialize();
     
-        // 从 ModelManager 获取所有启用的模型
+        // ModelManager からすべての有効なモデルを取得
         const models = modelManager.getEnabledModels().map(model => ({
           name: model.name,
           displayName: model.displayName,
@@ -257,7 +257,7 @@ export class Server {
           timestamp: new Date().toISOString()
         };
     
-        Logger.info('成功获取模型列表', {
+        Logger.info('モデルリスト取得成功', {
           modelCount: models.length,
           firstModel: defaultModel
         });
@@ -265,7 +265,7 @@ export class Server {
         res.json(apiResponse);
     
       } catch (error) {
-        Logger.error('获取模型列表失败', { error: (error as Error).message });
+        Logger.error('モデルリスト取得失敗', { error: (error as Error).message });
         res.status(500).json({
           success: false,
           models: [],
@@ -276,7 +276,7 @@ export class Server {
       }
     });
 
-    // 法律相談 API ルート（流式版本）
+    // 法律相談 API ルート（ストリーミングバージョン）
     /**
      * @openapi
      * /api/legal/query/stream:
@@ -331,7 +331,7 @@ export class Server {
           sessionId: sessionId || 'none'
         });
 
-        // 设置SSE响应头
+        // SSE レスポンスヘッダーの設定
         res.writeHead(200, {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
@@ -375,20 +375,20 @@ export class Server {
             });
           }
 
-          // 获取流式响应
+          // ストリーミングレスポンスの取得
           const stream = await agent.getStream(question, actualSessionId);
 
-          // 实时发送流式数据（只发送 LLM 类型的消息）
+          // リアルタイムでストリーミングデータを送信（LLM タイプのメッセージのみ送信）
           let fullResponse = '';
           for await (const chunk of stream) {
-            // chunk 现在包含 { type, content, messageType }
+            // chunk に { type, content, messageType } が含まれる
             if (chunk && typeof chunk === 'object' && chunk.type === 'llm') {
-              // 只处理 LLM 类型的消息，过滤掉 tool 类型
+              // LLM タイプのメッセージのみ処理、tool タイプをフィルタリング
               const content = chunk.content;
               if (typeof content === 'string') {
                 fullResponse += content;
 
-                // 发送内容更新事件
+                // 内容更新イベントの送信
                 res.write(`data: ${JSON.stringify({
                   type: 'content',
                   content: content,
@@ -399,7 +399,7 @@ export class Server {
             }
           }
 
-          // 发送完成事件
+          // 完了イベントの送信
           res.write(`data: ${JSON.stringify({
             type: 'complete',
             finalResponse: fullResponse,
@@ -409,16 +409,16 @@ export class Server {
           })}\n\n`);
 
         } catch (streamError) {
-          // 发送错误事件
+          // エラーイベントの送信
           res.write(`data: ${JSON.stringify({
             type: 'error',
             error: (streamError as Error).message,
             timestamp: new Date().toISOString()
           })}\n\n`);
-          Logger.error('流式处理失败', { error: (streamError as Error).message });
+          Logger.error('ストリーミング処理失敗', { error: (streamError as Error).message });
         }
 
-        // 结束连接
+        // 接続の終了
         res.end();
 
       } catch (error) {
@@ -438,8 +438,8 @@ export class Server {
      * @openapi
      * /api/legal/query:
      *   post:
-     *     summary: 法律問題相談（支持会话内存）
-     *     description: AI Agent を使用して法律関連問題を処理し、検索およびウェブページ読み込みツールを自動呼び出し可能，支持会话历史记忆
+     *     summary: 法律問題相談（セッションメモリ対応）
+     *     description: AI Agent を使用して法律関連問題を処理し、検索およびウェブページ読み込みツールを自動呼び出し可能、セッション履歴メモリをサポート
      *     tags: [Legal]
      *     requestBody:
      *       required: true
@@ -550,17 +550,17 @@ export class Server {
       }
     });
 
-    // 会话管理API
+    // セッション管理 API
     /**
      * @openapi
      * /api/sessions/stats:
      *   get:
-     *     summary: 获取会话统计信息
-     *     description: 获取所有会话的统计信息
+     *     summary: セッション統計情報の取得
+     *     description: すべてのセッションの統計情報を取得
      *     tags: [Sessions]
      *     responses:
      *       200:
-     *         description: 成功返回会话统计信息
+     *         description: セッション統計情報の取得成功
      *         content:
      *           application/json:
      *             schema:
@@ -568,13 +568,13 @@ export class Server {
      *               properties:
      *                 totalSessions:
      *                   type: integer
-     *                   description: 总会话数
+     *                   description: 総セッション数
      *                 activeSessions:
      *                   type: integer
-     *                   description: 活跃会话数
+     *                   description: アクティブセッション数
      *                 averageMessagesPerSession:
      *                   type: number
-     *                   description: 每个会话平均消息数
+     *                   description: 1 セッションあたりの平均メッセージ数
      *       500:
      *         description: サーバー内部エラー
      */
@@ -589,7 +589,7 @@ export class Server {
           timestamp: new Date().toISOString()
         });
       } catch (error) {
-        Logger.error('获取会话统计信息失败', { error: (error as Error).message });
+        Logger.error('セッション統計情報取得失敗', { error: (error as Error).message });
         res.status(500).json({
           success: false,
           error: (error as Error).message,
@@ -602,12 +602,12 @@ export class Server {
      * @openapi
      * /api/sessions/new:
      *   post:
-     *     summary: 创建新会话
-     *     description: 为客户端创建一个新的会话ID
+     *     summary: 新しいセッションの作成
+     *     description: クライアント用に新しいセッション ID を作成
      *     tags: [Sessions]
      *     responses:
      *       200:
-     *         description: 成功创建新会话
+     *         description: 新しいセッションの作成に成功
      *         content:
      *           application/json:
      *             schema:
@@ -618,7 +618,7 @@ export class Server {
      *                   example: true
      *                 sessionId:
      *                   type: string
-     *                   description: 新创建的会话ID
+     *                   description: 新規作成されたセッション ID
      *                   example: "session_1234567890"
      *                 timestamp:
      *                   type: string
@@ -628,7 +628,7 @@ export class Server {
      */
     this.app.post('/api/sessions/new', async (req: Request, res: Response): Promise<void> => {
       try {
-        // 使用MemorySaverManager创建新会话（只返回session ID）
+        // MemorySaverManager を使用して新しいセッションを作成（セッション ID のみを返す）
         const memoryManager = MemorySaverManager.getInstance();
         const newSessionId = memoryManager.createNewSession();
         
@@ -641,7 +641,7 @@ export class Server {
           message: 'Session created successfully. Agent will be created on first chat.'
         });
       } catch (error) {
-        Logger.error('创建新会话失败', { error: (error as Error).message });
+        Logger.error('新しいセッション作成失敗', { error: (error as Error).message });
         res.status(500).json({
           success: false,
           error: (error as Error).message,
@@ -654,8 +654,8 @@ export class Server {
      * @openapi
      * /api/sessions/{sessionId}/clear:
      *   delete:
-     *     summary: 清理会话
-     *     description: 清除指定会话的所有消息
+     *     summary: セッションのクリア
+     *     description: 指定されたセッションのすべてのメッセージをクリア
      *     tags: [Sessions]
      *     parameters:
      *       - in: path
@@ -666,9 +666,9 @@ export class Server {
      *         description: 会话ID
      *     responses:
      *       200:
-     *         description: 会话清除成功
+     *         description: セッションのクリアに成功
      *       400:
-     *         description: 缺少会话ID参数
+     *         description: セッション ID パラメータが不足しています
      *       500:
      *         description: サーバー内部エラー
      */
@@ -686,11 +686,11 @@ export class Server {
           return;
         }
         
-        // 使用MemorySaverManager清除会话
+        // MemorySaverManager を使用してセッションをクリア
         const memoryManager = MemorySaverManager.getInstance();
         memoryManager.clearSession(sessionId);
         
-        Logger.info('会话清除成功', { sessionId });
+        Logger.info('セッションクリア成功', { sessionId });
         
         res.json({
           success: true,
@@ -699,7 +699,7 @@ export class Server {
           timestamp: new Date().toISOString()
         });
       } catch (error) {
-        Logger.error('清除会话失败', { 
+        Logger.error('セッションクリア失敗', { 
           error: (error as Error).message,
           sessionId: req.params.sessionId
         });
@@ -734,25 +734,25 @@ export class Server {
           'GET /health': 'ヘルスチェック',
           'GET /models': '利用可能なモデルリスト',
           'POST /webhook': 'LINE Bot webhook',
-          'POST /api/legal/query': '法律問題相談（同期响应）',
-          'POST /api/legal/query/stream': '法律問題相談（流式响应）',
+          'POST /api/legal/query': '法律問題相談（同期レスポンス）',
+          'POST /api/legal/query/stream': '法律問題相談（ストリーミングレスポンス）',
           'GET /api/docs': 'API ドキュメント',
-          // 用户管理相关端点
-          'POST /api/user/signup': '用户注册',
-          'POST /api/user/login': '用户登录',
-          'GET /api/user/profile': '获取用户信息',
-          'POST /api/admin/login': '管理员登录',
-          'GET /api/admin/dashboard': '管理员仪表板',
-          'GET /api/admin/users': '获取用户列表',
-          'GET /api/admin/users/:id': '获取用户详情',
-          'PUT /api/admin/users/:id': '更新用户信息',
-          'DELETE /api/admin/users/:id': '删除用户',
+          // ユーザー管理関連エンドポイント
+          'POST /api/user/signup': 'ユーザー登録',
+          'POST /api/user/login': 'ユーザーログイン',
+          'GET /api/user/profile': 'ユーザー情報取得',
+          'POST /api/admin/login': '管理者ログイン',
+          'GET /api/admin/dashboard': '管理者ダッシュボード',
+          'GET /api/admin/users': 'ユーザーリスト取得',
+          'GET /api/admin/users/:id': 'ユーザー詳細取得',
+          'PUT /api/admin/users/:id': 'ユーザー情報更新',
+          'DELETE /api/admin/users/:id': 'ユーザー削除',
         },
         description: '法的アシスタント LINE Bot サーバー API'
       });
     });
     
-    // 用户管理路由
+    // ユーザー管理ルート
     this.app.use('/api/user', userRoutes);
     this.app.use('/api/admin', adminRoutes);
     
