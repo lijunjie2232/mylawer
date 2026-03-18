@@ -88,16 +88,16 @@ export class AuthService {
 
       if (!user) return null;
 
-      // 类型断言，因为 Prisma 返回的类型与我们的定义略有不同
+      // 型アサーション、Prisma の戻り値の型は定義と若干異なるため
       return user as UserWithPasswordHash;
     } catch (error) {
-      Logger.error('查找用户失败', { error: (error as Error).message });
+      Logger.error('ユーザー検索エラー', { error: (error as Error).message });
       return null;
     }
   }
 
   /**
-   * 通过 ID 查找用户
+   * ID でユーザーを検索
    */
   public async findUserById(userId: string): Promise<User | null> {
     try {
@@ -121,13 +121,13 @@ export class AuthService {
         updatedAt: user.updatedAt,
       };
     } catch (error) {
-      Logger.error('查找用户失败', { error: (error as Error).message });
+      Logger.error('ユーザー検索エラー', { error: (error as Error).message });
       return null;
     }
   }
 
   /**
-   * 创建新用户
+   * 新しいユーザーを作成
    */
   public async createUser(data: SignupRequest & { roleId: string }): Promise<User> {
     try {
@@ -157,24 +157,24 @@ export class AuthService {
         updatedAt: user.updatedAt,
       };
     } catch (error) {
-      Logger.error('创建用户失败', { error: (error as Error).message });
+      Logger.error('ユーザーの作成に失敗しました', { error: (error as Error).message });
       throw new Error(`Failed to create user: ${(error as Error).message}`);
     }
   }
 
   /**
-   * 用户登录
+   * ユーザーログイン
    */
   public async login(credentials: LoginRequest): Promise<{
     token: string;
     user: User;
   } | null> {
     try {
-      // 查找用户
+      // ユーザーを検索
       const user = await this.findUserByEmail(credentials.email);
 
       if (!user) {
-        Logger.warn('用户不存在', { email: credentials.email });
+        Logger.warn('ユーザーが存在しません', { email: credentials.email });
         return null;
       }
 
