@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Prisma 连接测试脚本
+ * Prisma 接続テストスクリプト
  * 
  * 使用方法:
  * npx tsx scripts/test-prisma-connection.ts
@@ -21,7 +21,7 @@ async function testConnection() {
   console.log('Testing database connection...');
   console.log(`DATABASE_URL: ${connectionString.replace(/\/\/([^:]+):([^@]+)@/, '//$1:***@')}`);
   
-  // 使用 PrismaPg 适配器创建连接
+  // PrismaPg アダプターを使用して接続を作成
   const adapter = new PrismaPg({ connectionString });
   const prisma = new PrismaClient({ adapter });
 
@@ -29,7 +29,7 @@ async function testConnection() {
     await prisma.$connect();
     console.log('✅ Database connection successful!');
 
-    // 检查表是否存在
+    // テーブルが存在するか確認
     const tableExistsResult = await prisma.$queryRaw`
       SELECT EXISTS (
         SELECT FROM information_schema.tables 
@@ -42,7 +42,7 @@ async function testConnection() {
     if (tableExists) {
       console.log('✅ Role table exists');
       
-      // 查询角色数量
+      // ロール数を照会
       const roleCount = await prisma.role.count();
       console.log(`📊 Number of roles: ${roleCount}`);
       
