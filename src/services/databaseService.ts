@@ -4,57 +4,57 @@ import { Logger } from '../utils/logger.js';
 import pg from 'pg';
 import { config } from '../config/environment.js';
 
-// 单例模式管理 Prisma Client
+// シングルトンパターンで Prisma Client を管理
 let prismaInstance: PrismaClient | null = null;
 
 export class DatabaseService {
   /**
-   * 获取 Prisma Client 单例
+   * Prisma Client のシングルトンを取得
    */
   public static getInstance(): PrismaClient {
     if (!prismaInstance) {
-      // 创建 PostgreSQL 连接池
+      // PostgreSQL 接続プールを作成
       const pool = new pg.Pool({
         connectionString: config.database.url,
       });
       
-      // 创建 Prisma 适配器
+      // Prisma アダプターを作成
       const adapter = new PrismaPg(pool);
       
-      // 使用适配器初始化Prisma Client
+      // アダプターを使用して Prisma Client を初期化
       prismaInstance = new PrismaClient({
         adapter,
         log: ['query', 'error', 'warn'],
       });
       
-      Logger.info('Prisma Client 初始化成功');
+      Logger.info('Prisma Client の初期化が完了しました');
     }
     return prismaInstance;
   }
 
   /**
-   * 连接数据库
+   * データベースに接続
    */
   public static async connect(): Promise<void> {
     const prisma = this.getInstance();
     
     try {
       await prisma.$connect();
-      Logger.info('数据库连接成功');
+      Logger.info('データベース接続成功');
     } catch (error) {
-      Logger.error('数据库连接失败', { error: (error as Error).message });
+      Logger.error('データベース接続失敗', { error: (error as Error).message });
       throw error;
     }
   }
 
   /**
-   * 断开数据库连接
+   * データベース接続を切断
    */
   public static async disconnect(): Promise<void> {
     if (prismaInstance) {
       await prismaInstance.$disconnect();
       prismaInstance = null;
-      Logger.info('数据库连接已断开');
+      Logger.info('データベース接続を切断しました');
     }
   }
 }
