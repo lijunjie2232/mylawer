@@ -184,7 +184,7 @@ export class EGovLawSearchTool extends DynamicTool {
       let errorMessage = '不明なエラー';
       
       if (axios.isAxiosError(error)) {
-        // Axios 错误处理
+        // Axios エラー処理
         if (error.response) {
           errorMessage = `HTTP ${error.response.status}: ${error.response.data || error.message}`;
         } else if (error.request) {
