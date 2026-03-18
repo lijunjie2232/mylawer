@@ -175,7 +175,7 @@ export class DeepSearchTool extends DynamicTool {
     const additionalDocuments: Document[] = [];
     const additionalFailedUrls: string[] = [];
     
-    // 找到尚未尝试加载的URL
+    // まだ試していない URL を見つける
     const availableResults = initialResults.filter(result => 
       !loadedUrls.includes(result.url) && !failedUrls.includes(result.url)
     );
@@ -298,8 +298,8 @@ export class DeepSearchTool extends DynamicTool {
         
         const { additionalDocuments, additionalFailedUrls } = await this.loadAdditionalPages(
           searchResults,
-          urls, // 已经尝试加载的URL
-          failedUrls, // 失败的URL
+          urls, // 既に試した URL
+          failedUrls, // 失敗した URL
           neededMore
         );
         
