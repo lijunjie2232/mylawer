@@ -290,7 +290,7 @@ const App: React.FC = () => {
                     break
                     
                   case 'content':
-                    // 只显示 LLM 类型的消息，过滤掉 tool 类型
+                    // LLM タイプのメッセージのみ表示、tool タイプをフィルタリング
                     if (data.messageType === 'llm' || !data.messageType) {
                       accumulatedContent += data.content
                       setMessages(prev => prev.map(msg => 
