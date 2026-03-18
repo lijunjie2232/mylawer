@@ -42,10 +42,10 @@ export class LegalAgent {
             isEnabled: true
         };
 
-        // 初始化会话内存管理器
+        // セッションメモリの初期化
         this.sessionMemory = MemorySaverManager.getInstance();
         
-        // 初始化工具实例
+        // ツールの初期化
         this.deepSearchTool = new DeepSearchTool({
             searchEngine: 'web',
             webSearchConfig: {
@@ -117,7 +117,7 @@ export class LegalAgent {
                 }
             );
     
-            // 定义 e-gov 法令搜索工具
+            // e-gov 法令検索ツールを定義
             const egovLawSearch = tool(
                 async (input: { keyword: string }): Promise<string> => {
                     return await this.egovLawSearchTool.search(input.keyword);
