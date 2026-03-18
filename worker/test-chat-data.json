@@ -1,0 +1,19 @@
+{
+  "model": "gpt-4",
+  "messages": [
+    {
+      "role": "system",
+      "content": "あなたは専門的な法律助手で、日本法律に関する質問に答えます。専門的ですが分かりやすい方法で回答してください。"
+    },
+    {
+      "role": "user",
+      "content": "日本の労働法における従業員解雇についての規定を教えてください？"
+    }
+  ],
+  "temperature": 0.7,
+  "max_tokens": 1024,
+  "top_p": 1,
+  "frequency_penalty": 0,
+  "presence_penalty": 0,
+  "stream": true
+}
