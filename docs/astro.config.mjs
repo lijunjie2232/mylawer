@@ -10,7 +10,7 @@ export default defineConfig({
 			tagline: 'インテリジェントな法的コンサルティングアシスタント',
 			description: 'LangChain を基盤とした法的コンサルティングシステム。様々な法律問題に回答し、専門的な法的アドバイスを提供できます。',
 			social: [
-				{ icon: 'github', label: 'GitHub', href: 'https://github.com/your-repo/law_assistant' }
+				{ icon: 'github', label: 'GitHub', href: 'https://github.com/lijunjie2232/mylawer' }
 			],
 			sidebar: [
 				{
@@ -43,5 +43,6 @@ export default defineConfig({
 			],
 		}),
 	],
-	site: 'https://lijunjie2232.github.io/mylawer',
+	site: 'https://lijunjie2232.github.io',
+	base: '/mylawer',
 });
