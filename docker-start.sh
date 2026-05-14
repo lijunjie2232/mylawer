@@ -3,18 +3,6 @@ set -e
 
 echo "=== Law Assistant Docker Container Startup ==="
 
-# Setup XVFB for headless browser automation
-export DISPLAY=:99
-if command -v Xvfb &> /dev/null; then
-    echo "Starting XVFB on display :99..."
-    Xvfb :99 -screen 0 1280x720x24 &
-    XVFB_PID=$!
-    sleep 2
-    echo "XVFB started with PID: $XVFB_PID"
-else
-    echo "WARNING: XVFB not found, browser automation may not work"
-fi
-
 # Function to wait for PostgreSQL to be ready
 wait_for_postgres() {
     echo "Waiting for PostgreSQL to be ready..."
