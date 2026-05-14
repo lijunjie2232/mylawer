@@ -62,8 +62,6 @@ RUN apt-get update && apt-get install -y \
     libasound2 \
     libpango-1.0-0 \
     libcairo2 \
-    # XVFB for headless browser automation
-    xvfb \
     # Cleanup apt cache to reduce image size
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/cache/apt/archives/* \
