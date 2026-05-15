@@ -63,14 +63,22 @@ export class ModelManager {
    * LLM サーバーからモデルリストを取得して設定を初期化
    */
   private async initializeModelsFromServer(): Promise<void> {
+    if (config.llm.useFreeModel) {
+      await this.initializeFreeModels();
+      return;
+    }
+
     Logger.info('LLM サーバーからモデル設定を初期化中...');
 
     try {
-      const modelsUrl = `${config.llm.baseUrl}/models`;
-      Logger.info('LLM API にモデルリストを照会', { url: modelsUrl });
+      // Mask the URL for logging
+      const maskedUrl = config.llm.baseUrl 
+        ? '********' + config.llm.baseUrl.slice(-4)
+        : '未設定';
+      Logger.info('LLM API にモデルリストを照会', { url: maskedUrl });
 
       // LLM API からモデルリストを取得
-      const response = await fetch(modelsUrl, {
+      const response = await fetch(`${config.llm.baseUrl}/models`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -119,6 +127,74 @@ export class ModelManager {
   }
 
   /**
+   * OpenRouter から無料モデルを取得して初期化
+   */
+  private async initializeFreeModels(): Promise<void> {
+    Logger.info('OpenRouter から無料モデル設定を初期化中...');
+
+    try {
+      const params = new URLSearchParams({
+        active: 'true',
+        fmt: 'cards',
+        max_price: '0',
+        categories: 'tool',
+        input_modalities: 'text',
+      });
+
+      const url = `https://openrouter.ai/api/frontend/models/find?${params.toString()}`;
+      Logger.info('OpenRouter 無料モデル API に照会', { url });
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenRouter API からの無料モデル取得に失敗しました：${response.status} ${response.statusText}`);
+      }
+
+      const orResponse = await response.json();
+      const orModels = orResponse.data?.models || [];
+
+      if (!Array.isArray(orModels) || orModels.length === 0) {
+        Logger.warn('OpenRouter API から無料モデルが返されませんでした。フォールバックします');
+        this.initializeFallbackModels();
+        return;
+      }
+
+      // 各モデルの設定を構築
+      for (const model of orModels) {
+        const modelId = model.endpoint?.model_variant_slug;
+        if (!modelId) continue;
+
+        const modelConfig: ModelConfig = {
+          name: modelId,
+          displayName: model.name || modelId,
+          provider: 'openai', // OpenRouter is OpenAI compatible
+          baseUrl: config.llm.freeModelBaseUrl,
+          apiKey: config.llm.apiKey || undefined,
+          maxTokens: config.llm.maxTokens,
+          temperature: config.llm.temperature,
+          description: model.description || `由 ${model.architecture?.modality || 'OpenRouter'} 提供 (免费)`,
+          isEnabled: true
+        };
+
+        this.models.set(modelConfig.name, modelConfig);
+      }
+
+      Logger.info(`${this.models.size} 個の無料モデル設定を OpenRouter から読み込みました`);
+
+    } catch (error) {
+      Logger.error('OpenRouter からの無料モデル初期化に失敗しました。フォールバックします', { 
+        error: (error as Error).message 
+      });
+      this.initializeFallbackModels();
+    }
+  }
+
+  /**
    * フォールバック用のモデル設定を初期化（LLM API 利用不可の場合）
    */
   private initializeFallbackModels(): void {
@@ -141,39 +217,39 @@ export class ModelManager {
 
     // 添加一些常见的备选模型配置
     const alternativeModels: ModelConfig[] = [
-      {
-        name: 'gpt-4o-mini',
-        displayName: 'OpenAI - GPT-4o Mini',
-        provider: 'openai',
-        baseUrl: 'https://api.openai.com/v1',
-        apiKey: process.env.LLM_API_KEY,
-        maxTokens: 8192,
-        temperature: 0.7,
-        description: '轻量级高性能模型',
-        isEnabled: !!process.env.LLM_API_KEY
-      },
-      {
-        name: 'gpt-4o',
-        displayName: 'OpenAI - GPT-4o',
-        provider: 'openai',
-        baseUrl: 'https://api.openai.com/v1',
-        apiKey: process.env.LLM_API_KEY,
-        maxTokens: 16384,
-        temperature: 0.7,
-        description: '最新旗舰模型',
-        isEnabled: !!process.env.LLM_API_KEY
-      },
-      {
-        name: 'claude-3-haiku',
-        displayName: 'Anthropic - Claude 3 Haiku',
-        provider: 'anthropic',
-        baseUrl: 'https://api.anthropic.com/v1',
-        apiKey: process.env.LLM_API_KEY,
-        maxTokens: 4096,
-        temperature: 0.7,
-        description: '快速且经济的模型',
-        isEnabled: !!process.env.LLM_API_KEY
-      }
+      // {
+      //   name: 'gpt-4o-mini',
+      //   displayName: 'OpenAI - GPT-4o Mini',
+      //   provider: 'openai',
+      //   baseUrl: 'https://api.openai.com/v1',
+      //   apiKey: process.env.LLM_API_KEY,
+      //   maxTokens: 8192,
+      //   temperature: 0.7,
+      //   description: '轻量级高性能模型',
+      //   isEnabled: !!process.env.LLM_API_KEY
+      // },
+      // {
+      //   name: 'gpt-4o',
+      //   displayName: 'OpenAI - GPT-4o',
+      //   provider: 'openai',
+      //   baseUrl: 'https://api.openai.com/v1',
+      //   apiKey: process.env.LLM_API_KEY,
+      //   maxTokens: 16384,
+      //   temperature: 0.7,
+      //   description: '最新旗舰模型',
+      //   isEnabled: !!process.env.LLM_API_KEY
+      // },
+      // {
+      //   name: 'claude-3-haiku',
+      //   displayName: 'Anthropic - Claude 3 Haiku',
+      //   provider: 'anthropic',
+      //   baseUrl: 'https://api.anthropic.com/v1',
+      //   apiKey: process.env.LLM_API_KEY,
+      //   maxTokens: 4096,
+      //   temperature: 0.7,
+      //   description: '快速且经济的模型',
+      //   isEnabled: !!process.env.LLM_API_KEY
+      // }
     ];
 
     // 添加备选模型
@@ -190,9 +266,18 @@ export class ModelManager {
    * すべての有効なモデルリストを取得
    */
   public getEnabledModels(): ModelConfig[] {
-    return Array.from(this.models.values())
-      .filter(model => model.isEnabled)
-      .sort((a, b) => a.displayName.localeCompare(b.displayName));
+    const enabledModels = Array.from(this.models.values())
+      .filter(model => model.isEnabled);
+    
+    // Apply ALLOW_MODELS filtering if configured
+    const allowedModels = config.llm.allowedModels;
+    if (allowedModels && allowedModels.length > 0) {
+      return enabledModels
+        .filter(model => allowedModels.includes(model.name))
+        .sort((a, b) => a.displayName.localeCompare(b.displayName));
+    }
+    
+    return enabledModels.sort((a, b) => a.displayName.localeCompare(b.displayName));
   }
 
   /**

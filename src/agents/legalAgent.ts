@@ -1,25 +1,21 @@
 import { initChatModel } from "langchain";
-import { tool } from "@langchain/core/tools";
-import { HumanMessage, SystemMessage, AIMessage, BaseMessage } from "@langchain/core/messages";
-import { DeepSearchTool } from '../tools/deepSearchTool.js';
+import { HumanMessage, SystemMessage, AIMessage } from "@langchain/core/messages";
 import { config } from '../config/environment.js';
 import { Logger } from '../utils/logger.js';
-import { z } from "zod";
 import { ModelConfig } from '../models/modelManager.js';
 import { MemorySaverManager } from '../memory/memorySaverManager.js';
-import { EGovLawSearchTool } from '../tools/egovLawSearchTool.js';
+import { PostgresMemoryManager } from '../memory/postgresMemoryManager.js';
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
-import { MemorySaver } from "@langchain/langgraph";
+import { BaseCheckpointSaver } from "@langchain/langgraph";
+import { initializeMCPServers, getMCPTools } from '../mcp/mcpInitializer.js';
 
 export class LegalAgent {
     private agent: any;
-    private memorySaver!: MemorySaver;
+    private checkpointer!: BaseCheckpointSaver;
     private isInitialized: boolean = false;
     private modelConfig: ModelConfig;
     private sessionMemory: MemorySaverManager;
     private readonly maxContextMessages: number = 10; // 最大コンテキストメッセージ数
-    private deepSearchTool: DeepSearchTool;
-    private egovLawSearchTool: EGovLawSearchTool;
 
     private readonly systemPrompt = `
 あなたは日本の法律に特化した役立つ弁護士アシスタントです。
@@ -34,7 +30,7 @@ export class LegalAgent {
             name: config.llm.modelName,
             displayName: `${config.llm.modelProvider.toUpperCase()} - ${config.llm.modelName}`,
             provider: config.llm.modelProvider as 'ollama' | 'openai' | 'anthropic',
-            baseUrl: config.llm.baseUrl,
+            baseUrl: config.llm.useFreeModel ? config.llm.freeModelBaseUrl : config.llm.baseUrl,
             apiKey: config.llm.apiKey || undefined,
             maxTokens: config.llm.maxTokens,
             temperature: config.llm.temperature,
@@ -44,28 +40,6 @@ export class LegalAgent {
 
         // セッションメモリの初期化
         this.sessionMemory = MemorySaverManager.getInstance();
-        
-        // ツールの初期化
-        this.deepSearchTool = new DeepSearchTool({
-            searchEngine: 'web',
-            webSearchConfig: {
-                maxResults: 3,
-                headless: false,
-                searchEngine: 'yahoo',
-                language: 'ja-JP'
-            },
-            webpageLoaderConfig: {
-                usePlaywright: true,
-                headless: false,
-                language: 'ja-JP',
-                timeout: 30000
-            }
-        });
-        
-        this.egovLawSearchTool = new EGovLawSearchTool({
-            maxResults: 5,
-            language: 'ja'
-        });
 
         this.initializeAgent().catch(error => {
             Logger.error('Agent initialization failed', { error: error.message });
@@ -80,12 +54,17 @@ export class LegalAgent {
             Logger.info('Initializing LLM...', {
                 model: this.modelConfig.name,
                 provider: this.modelConfig.provider,
-                baseUrl: this.modelConfig.baseUrl
+                // Mask baseUrl for security
+                baseUrl: this.modelConfig.baseUrl ? '********' + this.modelConfig.baseUrl.slice(-4) : '未設定'
             });
     
             // プロバイダータイプに応じて適切な環境変数を設定
             if (this.modelConfig.provider === 'ollama') {
                 process.env.OLLAMA_BASE_URL = this.modelConfig.baseUrl.replace('/v1', '');
+                // Mask OLLAMA_BASE_URL for logging
+                Logger.debug('Set OLLAMA_BASE_URL', { 
+                    url: process.env.OLLAMA_BASE_URL ? '********' + process.env.OLLAMA_BASE_URL.slice(-4) : '未設定' 
+                });
             }
     
             const llm = await initChatModel(
@@ -101,55 +80,58 @@ export class LegalAgent {
                 }
             );
     
-            Logger.info('LLM initialized, creating agent with tools...');
+            Logger.info('LLM initialized successfully, connecting to MCP servers...');
     
-            // 定义深度搜索工具
-            const deepSearch = tool(
-                async (input: { query: string }): Promise<string> => {
-                    return await this.deepSearchTool.deepSearch(input.query);
-                },
-                {
-                    name: "deep_search",
-                    description: "web 検索の上位の結果を取得し、自動的にウェブページを読み込んでコンテンツを返します。失敗したページがあっても、成功したドキュメントを返します。",
-                    schema: z.object({
-                        query: z.string().describe("検索クエリやキーワード")
-                    }),
-                }
-            );
+            // Initialize MCP servers with resilient error handling
+            // If some servers fail, we'll still use the ones that succeeded
+            try {
+                Logger.info('Starting MCP server initialization...');
+                await initializeMCPServers();
+                Logger.info('MCP servers initialization completed (some may have failed)');
+            } catch (mcpError) {
+                // This shouldn't happen anymore since we catch errors per-server,
+                // but keep it as a safety net
+                Logger.error('Unexpected error during MCP server initialization', {
+                    error: (mcpError as Error).message,
+                    stack: (mcpError as Error).stack
+                });
+            }
+            
+            // Get MCP tools as LangChain tools (will only include tools from successful servers)
+            Logger.info('Retrieving MCP tools from available servers...');
+            const mcpTools = await getMCPTools();
+            
+            if (mcpTools.length === 0) {
+                Logger.warn('No MCP tools available. Agent will run without external tools.');
+            } else {
+                Logger.info('MCP tools loaded successfully', {
+                    toolCount: mcpTools.length,
+                    tools: mcpTools.map(t => t.name)
+                });
+            }
     
-            // e-gov 法令検索ツールを定義
-            const egovLawSearch = tool(
-                async (input: { keyword: string }): Promise<string> => {
-                    return await this.egovLawSearchTool.search(input.keyword);
-                },
-                {
-                    name: "egov_law_search",
-                    description: "日本の e-gov 法令検索 API から法令情報を検索します。キーワードから関連する法律条文を検索できます。",
-                    schema: z.object({
-                        keyword: z.string().describe("検索したい法令キーワード（例：窃盗、致死など，罪、法など文字を脱いで。）")
-                    }),
-                }
-            );
+            // Create PostgresSaver for persistence
+            Logger.debug('Initializing Postgres checkpointer...');
+            const postgresMemory = PostgresMemoryManager.getInstance();
+            this.checkpointer = await postgresMemory.getCheckpointer();
     
-            // Create MemorySaver for persistence
-            this.memorySaver = new MemorySaver();
-    
-            // Create the agent using createReactAgent (prebuilt ReAct agent)
+            // Create the agent using createReactAgent with MCP tools
+            Logger.debug('Creating React Agent with MCP tools...');
             this.agent = createReactAgent({
                 llm: llm,
-                tools: [deepSearch, egovLawSearch],
-                checkpointSaver: this.memorySaver,
+                tools: mcpTools,
+                checkpointSaver: this.checkpointer,
                 messageModifier: this.systemPrompt
             });
-    
-            // ツール呼び出しを監視するためのラッパーを作成
-            this.wrapToolsWithLogging([deepSearch, egovLawSearch]);
     
             this.isInitialized = true;
             Logger.info(`Legal Agent initialized successfully with model: ${this.modelConfig.name}`);
     
         } catch (error) {
-            Logger.error('Failed to initialize Legal Agent', { error: (error as Error).message });
+            Logger.error('Failed to initialize Legal Agent', {
+                error: (error as Error).message,
+                stack: (error as Error).stack
+            });
             throw error;
         }
     }
@@ -243,16 +225,31 @@ export class LegalAgent {
                     // Extract the message chunk from the tuple
                     const messageChunk = Array.isArray(chunk) ? chunk[0] : chunk;
                         
-                    if (messageChunk && typeof messageChunk.content === 'string') {
-                        // Check if this is a tool message or AI message
+                    if (messageChunk) {
                         const messageType = messageChunk._getType ? messageChunk._getType() : 'ai';
-                        const isToolMessage = messageType === 'tool' || messageType === 'ToolMessage';
                         
-                        yield {
-                            type: isToolMessage ? 'tool' : 'llm',
-                            content: messageChunk.content,
-                            messageType: messageType
-                        };
+                        // Check for tool calls in AIMessage
+                        if (messageType === 'ai' && messageChunk.tool_calls && messageChunk.tool_calls.length > 0) {
+                            for (const toolCall of messageChunk.tool_calls) {
+                                yield {
+                                    type: 'tool_start',
+                                    tool: toolCall.name,
+                                    args: toolCall.args,
+                                    messageType: 'tool_call'
+                                };
+                            }
+                        }
+
+                        if (typeof messageChunk.content === 'string' && messageChunk.content.length > 0) {
+                            const isToolMessage = messageType === 'tool' || messageType === 'ToolMessage';
+                            
+                            yield {
+                                type: isToolMessage ? 'tool' : 'llm',
+                                content: messageChunk.content,
+                                messageType: messageType,
+                                toolName: isToolMessage ? messageChunk.name : undefined
+                            };
+                        }
                     }
                 }
             }
@@ -320,53 +317,5 @@ export class LegalAgent {
      */
     updateSessionContext(sessionId: string, context: Record<string, any>): void {
         this.sessionMemory.updateContext(sessionId, context);
-    }
-
-    /**
-     * ツールにログ機能を追加して監視
-     */
-    private wrapToolsWithLogging(tools: any[]): void {
-        tools.forEach(tool => {
-            const originalFunc = tool.func;
-            if (typeof originalFunc === 'function') {
-                tool.func = async (...args: any[]) => {
-                    const startTime = Date.now();
-                    const toolName = tool.name || 'unknown';
-                    const inputPreview = JSON.stringify(args[0]).substring(0, 200);
-
-                    Logger.info('[TOOL CALL] ツール呼び出し開始', {
-                        toolName,
-                        input: inputPreview,
-                        timestamp: new Date().toISOString()
-                    });
-
-                    try {
-                        const result = await originalFunc.apply(tool, args);
-                        const duration = Date.now() - startTime;
-                        const resultPreview = typeof result === 'string'
-                            ? result.substring(0, 300)
-                            : JSON.stringify(result).substring(0, 300);
-
-                        Logger.info('[TOOL RESULT] ツール呼び出し完了', {
-                            toolName,
-                            duration: `${duration}ms`,
-                            resultLength: result?.length || 0,
-                            resultPreview: resultPreview + '...'
-                        });
-
-                        return result;
-                    } catch (error) {
-                        const duration = Date.now() - startTime;
-                        Logger.error('[TOOL ERROR] ツール呼び出しエラー', {
-                            toolName,
-                            duration: `${duration}ms`,
-                            error: (error as Error).message,
-                            stack: (error as Error).stack
-                        });
-                        throw error;
-                    }
-                };
-            }
-        });
     }
 }

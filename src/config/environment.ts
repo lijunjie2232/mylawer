@@ -17,6 +17,17 @@ const envSchema = z.object({
   LLM_TEMPERATURE: z.string().transform(Number).default(0.7),
   LLM_API_KEY: z.string().min(1, 'LLM_API_KEY is required and cannot be empty'),
   
+  // Free Model 配置
+  USE_FREE_MODEL: z.string().transform(v => v === 'true').default('false'),
+  FREE_MODEL_BASE_URL: z.string().default('https://openrouter.ai/api/v1'),
+  DEFAULT_MODEL: z.string().optional(),
+  
+  // 允许使用的模型列表（逗号分隔），留空表示允许所有模型
+  ALLOW_MODELS: z.string().optional(),
+  
+  // 允许使用的MCP工具列表（逗号或分号分隔），留空表示允许所有工具
+  ALLOWED_MCP_TOOLS: z.string().optional(),
+  
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
   
   // LINE Bot 配置
@@ -29,6 +40,7 @@ const envSchema = z.object({
   
   // データベース配置
   DATABASE_URL: z.string().url(),
+  DB_TYPE: z.string().default('postgresql'),
   
   // JWT & 認証配置
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters'),
@@ -46,8 +58,18 @@ const env = envSchema.parse(process.env);
 // デバッグログ：環境変数の確認
 console.log('=== 環境変数デバッグ ===');
 console.log('LLM_MODEL_PROVIDER:', process.env.LLM_MODEL_PROVIDER);
-console.log('LLM_BASE_URL:', process.env.LLM_BASE_URL);
-console.log('LLM_API_KEY:', process.env.LLM_API_KEY ? '***' + process.env.LLM_API_KEY.slice(-4) : '未設定');
+console.log('USE_FREE_MODEL:', env.USE_FREE_MODEL);
+console.log('FREE_MODEL_BASE_URL:', env.FREE_MODEL_BASE_URL);
+// Mask LLM_BASE_URL - show only last 4 characters
+const maskedBaseUrl = process.env.LLM_BASE_URL 
+  ? '********' + process.env.LLM_BASE_URL.slice(-4)
+  : '未設定';
+console.log('LLM_BASE_URL:', maskedBaseUrl);
+// Mask LLM_API_KEY - show only last 4 characters
+const maskedApiKey = process.env.LLM_API_KEY 
+  ? '********' + process.env.LLM_API_KEY.slice(-4)
+  : '未設定';
+console.log('LLM_API_KEY:', maskedApiKey);
 console.log('=====================');
 
 export const config = {
@@ -59,10 +81,17 @@ export const config = {
   llm: {
     apiKey: env.LLM_API_KEY || '',
     baseUrl: env.LLM_BASE_URL,
+    useFreeModel: env.USE_FREE_MODEL,
+    freeModelBaseUrl: env.FREE_MODEL_BASE_URL,
     modelProvider: env.LLM_MODEL_PROVIDER,
     modelName: env.LLM_MODEL_NAME,
+    defaultModel: env.DEFAULT_MODEL,
     maxTokens: env.LLM_MAX_TOKENS,
     temperature: env.LLM_TEMPERATURE,
+    allowedModels: env.ALLOW_MODELS ? env.ALLOW_MODELS.split(/[,;]/).map(m => m.trim()).filter(m => m.length > 0) : undefined,
+  },
+  mcp: {
+    allowedTools: env.ALLOWED_MCP_TOOLS ? env.ALLOWED_MCP_TOOLS.split(/[,;]/).map(t => t.trim()).filter(t => t.length > 0) : undefined,
   },
   line: {
     channelSecret: env.LINE_CHANNEL_SECRET,
@@ -74,6 +103,7 @@ export const config = {
   },
   database: {
     url: env.DATABASE_URL,
+    type: env.DB_TYPE,
   },
   auth: {
     jwtSecret: env.JWT_SECRET,
