@@ -1,6 +1,7 @@
 import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import swaggerUi from 'swagger-ui-express';
 import swaggerJsdoc from 'swagger-jsdoc';
@@ -22,8 +23,11 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { LineWebhookBody } from './types/server.js';
 import { LegalQueryRequest, LegalQueryResponse, ModelsApiResponse, LlmModelsResponse, LlmModel, ModelInfo } from './types/index.js';
 import { DatabaseService } from './services/databaseService.js';
+import { ChatService } from './services/chatService.js';
 import userRoutes from './routes/userRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import chatRoutes from './routes/chatRoutes.js';
+import { authenticateToken, optionalAuth } from './middleware/authMiddleware.js';
 
 export class Server {
   private app: Application;
@@ -239,7 +243,7 @@ export class Server {
         await modelManager.initialize();
     
         // ModelManager からすべての有効なモデルを取得
-        const models = modelManager.getEnabledModels().map(model => ({
+        let models = modelManager.getEnabledModels().map(model => ({
           name: model.name,
           displayName: model.displayName,
           provider: model.provider,
@@ -248,6 +252,16 @@ export class Server {
           isHealthy: true
         }));
     
+        // DEFAULT_MODEL が設定されている場合、それを先頭に移動
+        const defaultModelId = config.llm.defaultModel;
+        if (defaultModelId) {
+          const defaultModelIndex = models.findIndex(m => m.name === defaultModelId);
+          if (defaultModelIndex > -1) {
+            const [defaultModel] = models.splice(defaultModelIndex, 1);
+            models = [defaultModel, ...models];
+          }
+        }
+
         const defaultModel = models.length > 0 ? models[0].name : '';
     
         const apiResponse: ModelsApiResponse = {
@@ -313,9 +327,10 @@ export class Server {
      *       500:
      *         description: サーバー内部エラー
      */
-    this.app.post('/api/legal/query/stream', async (req: Request, res: Response): Promise<void> => {
+    this.app.post('/api/legal/query/stream', optionalAuth, async (req: any, res: Response): Promise<void> => {
       try {
         const { question, model, sessionId }: LegalQueryRequest & { sessionId?: string } = req.body;
+        const userId = req.user?.userId;
 
         if (!question || typeof question !== 'string') {
           res.status(400).json({
@@ -328,7 +343,8 @@ export class Server {
         Logger.info('法律相談流式リクエストを受信', {
           question: question.substring(0, 100) + '...',
           model: model || 'default',
-          sessionId: sessionId || 'none'
+          sessionId: sessionId || 'none',
+          userId: userId || 'anonymous'
         });
 
         // SSE レスポンスヘッダーの設定
@@ -345,14 +361,43 @@ export class Server {
         try {
           // MemorySaverManagerを使用してセッションを処理
           const memoryManager = MemorySaverManager.getInstance();
-          let actualSessionId = sessionId || memoryManager.createNewSession();
+          const chatService = ChatService.getInstance();
+          
+          let actualSessionId = sessionId;
+          const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+
+          if (userId) {
+            let sessionExists = false;
+            let currentSession = null;
+            if (actualSessionId && isUuid(actualSessionId)) {
+              // 检查会话是否存在于数据库中
+              currentSession = await chatService.getSession(actualSessionId, userId);
+              sessionExists = !!currentSession;
+            }
+
+            if (!actualSessionId || !isUuid(actualSessionId) || !sessionExists) {
+              const dbSession = await chatService.createSession(userId, question.substring(0, 30) + (question.length > 30 ? '...' : ''));
+              actualSessionId = dbSession.id;
+              Logger.info('Created new DB session for authenticated user (stream)', { userId, sessionId: actualSessionId });
+            } else if (currentSession && (currentSession.title === '新会话' || !currentSession.title)) {
+              // 如果是默认标题，根据第一个问题更新标题
+              await chatService.updateSessionTitle(actualSessionId, userId, question.substring(0, 30) + (question.length > 30 ? '...' : ''));
+              Logger.info('Updated default session title with first question', { sessionId: actualSessionId });
+            }
+          } else if (!actualSessionId) {
+            actualSessionId = memoryManager.createNewSession();
+          }
+
           let session = memoryManager.getSession(actualSessionId);
           
-          // セッションが存在しない場合、新しいセッションを作成
+          // セッションが存在しない場合
           if (!session) {
-            actualSessionId = memoryManager.createNewSession();
-            session = memoryManager.getSession(actualSessionId);
-            Logger.info('Created new session for first chat', { sessionId: actualSessionId });
+            // MemorySaverManager.addMessage 等で自動作成されるため、ここでは何もしなくても良い場合が多い
+          }
+
+          // 如果是已登录用户，保存用户消息到数据库
+          if (userId && isUuid(actualSessionId)) {
+            await chatService.addMessage(actualSessionId, { role: 'user', content: question });
           }
           
           // モデル設定を取得
@@ -366,7 +411,7 @@ export class Server {
           }
           
           // セッション用のエージェントを作成（初回チャットの場合）
-          let agent = session!.agent;
+          let agent = session?.agent;
           if (!agent) {
             agent = await memoryManager.createAgentForSession(actualSessionId, modelConfig);
             Logger.info('Agent created for session on first chat', { 
@@ -381,22 +426,38 @@ export class Server {
           // リアルタイムでストリーミングデータを送信（LLM タイプのメッセージのみ送信）
           let fullResponse = '';
           for await (const chunk of stream) {
-            // chunk に { type, content, messageType } が含まれる
-            if (chunk && typeof chunk === 'object' && chunk.type === 'llm') {
-              // LLM タイプのメッセージのみ処理、tool タイプをフィルタリング
-              const content = chunk.content;
-              if (typeof content === 'string') {
-                fullResponse += content;
-
-                // 内容更新イベントの送信
+            // chunk に { type, content, messageType, tool, args } が含まれる
+            if (chunk && typeof chunk === 'object') {
+              if (chunk.type === 'tool_start') {
+                // 发送工具调用开始事件
                 res.write(`data: ${JSON.stringify({
-                  type: 'content',
-                  content: content,
-                  accumulated: fullResponse.length,
-                  messageType: 'llm'
+                  type: 'tool_call',
+                  tool: chunk.tool,
+                  timestamp: new Date().toISOString()
                 })}\n\n`);
+                continue;
+              }
+
+              if (chunk.type === 'llm') {
+                const content = chunk.content;
+                if (typeof content === 'string') {
+                  fullResponse += content;
+
+                  // 内容更新イベントの送信
+                  res.write(`data: ${JSON.stringify({
+                    type: 'content',
+                    content: content,
+                    accumulated: fullResponse.length,
+                    messageType: 'llm'
+                  })}\n\n`);
+                }
               }
             }
+          }
+
+          // 如果是已登录用户，保存助手回复到数据库
+          if (userId && isUuid(actualSessionId)) {
+            await chatService.addMessage(actualSessionId, { role: 'assistant', content: fullResponse });
           }
 
           // 完了イベントの送信
@@ -474,9 +535,10 @@ export class Server {
      *       500:
      *         description: サーバー内部エラー
      */
-    this.app.post('/api/legal/query', async (req: Request, res: Response): Promise<void> => {
+    this.app.post('/api/legal/query', optionalAuth, async (req: any, res: Response): Promise<void> => {
       try {
         const { question, model, sessionId }: LegalQueryRequest & { sessionId?: string } = req.body;
+        const userId = req.user?.userId;
 
         if (!question || typeof question !== 'string') {
           res.status(400).json({
@@ -489,19 +551,50 @@ export class Server {
         Logger.info('法律相談リクエストを受信', {
           question: question.substring(0, 100) + '...',
           model: model || 'default',
-          sessionId: sessionId || 'none'
+          sessionId: sessionId || 'none',
+          userId: userId || 'anonymous'
         });
 
         // MemorySaverManagerを使用してセッションを処理
         const memoryManager = MemorySaverManager.getInstance();
-        let actualSessionId = sessionId || memoryManager.createNewSession();
+        const chatService = ChatService.getInstance();
+        
+        let actualSessionId = sessionId;
+        const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+        
+        if (userId) {
+          let sessionExists = false;
+          let currentSession = null;
+          if (actualSessionId && isUuid(actualSessionId)) {
+            currentSession = await chatService.getSession(actualSessionId, userId);
+            sessionExists = !!currentSession;
+          }
+
+          if (!actualSessionId || !isUuid(actualSessionId) || !sessionExists) {
+            const dbSession = await chatService.createSession(userId, question.substring(0, 30) + (question.length > 30 ? '...' : ''));
+            actualSessionId = dbSession.id;
+            Logger.info('Created new DB session for authenticated user', { userId, sessionId: actualSessionId });
+          } else if (currentSession && (currentSession.title === '新会话' || !currentSession.title)) {
+            // 如果是默认标题，根据第一个问题更新标题
+            await chatService.updateSessionTitle(actualSessionId, userId, question.substring(0, 30) + (question.length > 30 ? '...' : ''));
+            Logger.info('Updated default session title with first question', { sessionId: actualSessionId });
+          }
+        } else if (!actualSessionId) {
+          actualSessionId = memoryManager.createNewSession();
+        }
+
         let session = memoryManager.getSession(actualSessionId);
         
         // セッションが存在しない場合、新しいセッションを作成
         if (!session) {
-          actualSessionId = memoryManager.createNewSession();
-          session = memoryManager.getSession(actualSessionId);
-          Logger.info('Created new session for first chat', { sessionId: actualSessionId });
+          // 如果是 DB 会话但内存中没有，MemorySaverManager.addMessage 会自动创建内存条目
+          // 或者我们可以显式处理
+          session = memoryManager.getSession(actualSessionId); 
+        }
+        
+        // 如果是已登录用户，保存用户消息到数据库
+        if (userId && isUuid(actualSessionId)) {
+          await chatService.addMessage(actualSessionId, { role: 'user', content: question });
         }
         
         // モデル設定を取得
@@ -515,7 +608,7 @@ export class Server {
         }
         
         // セッション用のエージェントを作成（初回チャットの場合）
-        let agent = session!.agent;
+        let agent = session?.agent;
         if (!agent) {
           agent = await memoryManager.createAgentForSession(actualSessionId, modelConfig);
           Logger.info('Agent created for session on first chat', { 
@@ -525,6 +618,11 @@ export class Server {
         }
         
         const answer = await agent.processQuery(question, actualSessionId);
+
+        // 如果是已登录用户，保存助手回复到数据库
+        if (userId && isUuid(actualSessionId)) {
+          await chatService.addMessage(actualSessionId, { role: 'assistant', content: answer });
+        }
 
         const response: LegalQueryResponse = {
           success: true,
@@ -626,19 +724,27 @@ export class Server {
      *       500:
      *         description: サーバー内部エラー
      */
-    this.app.post('/api/sessions/new', async (req: Request, res: Response): Promise<void> => {
+    this.app.post('/api/sessions/new', optionalAuth, async (req: any, res: Response): Promise<void> => {
       try {
-        // MemorySaverManager を使用して新しいセッションを作成（セッション ID のみを返す）
-        const memoryManager = MemorySaverManager.getInstance();
-        const newSessionId = memoryManager.createNewSession();
-        
-        Logger.info('New session created without agent', { sessionId: newSessionId });
+        const userId = req.user?.userId;
+        let newSessionId: string;
+
+        if (userId) {
+          // 为已登录用户生成一个临时的 UUID，但不立即保存到数据库
+          // 只有当用户发送第一条消息时，query 接口才会真正创建数据库记录
+          newSessionId = crypto.randomUUID();
+          Logger.info('Generated temporary session ID for authenticated user', { userId, sessionId: newSessionId });
+        } else {
+          const memoryManager = MemorySaverManager.getInstance();
+          newSessionId = memoryManager.createNewSession();
+          Logger.info('Created new memory session via /new', { sessionId: newSessionId });
+        }
         
         res.json({
           success: true,
           sessionId: newSessionId,
           timestamp: new Date().toISOString(),
-          message: 'Session created successfully. Agent will be created on first chat.'
+          message: 'Session initialized. Database record will be created on first message.'
         });
       } catch (error) {
         Logger.error('新しいセッション作成失敗', { error: (error as Error).message });
@@ -755,6 +861,7 @@ export class Server {
     // ユーザー管理ルート
     this.app.use('/api/user', userRoutes);
     this.app.use('/api/admin', adminRoutes);
+    this.app.use('/api/chat', chatRoutes);
     
     Logger.info('ルート設定完了');
   }
@@ -819,14 +926,11 @@ export class Server {
 
         console.log(`
 ╔══════════════════════════════════════╗
-║    法的アシスタントサーバー起動完了    ║
+║   法的アシスタントサーバー起動完了   ║
 ╠══════════════════════════════════════╣
 ║ ポート：${this.port.toString().padEnd(28)} ║
 ║ 環境：${config.app.env.padEnd(30)} ║
-║ LINE Bot: ${config.line.channelSecret && config.line.accessToken
-            ? '有効'
-            : '無効'
-          }.padEnd(26)} ║
+║ LINE Bot: ${(config.line.channelSecret && config.line.accessToken ? '有効' : '無効').padEnd(26)} ║
 ╚══════════════════════════════════════╝
         `);
 
