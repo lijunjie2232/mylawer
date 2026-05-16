@@ -1,13 +1,24 @@
 services:
   postgres:
-    image: postgres:18.3-alpine
+    image: postgres:18.4-trixie
     container_name: las-postgres
     ports:
-      - "5432:5432"
+      - "15432:5432"
     environment:
-      POSTGRES_PASSWORD: "StrongPassword123!"
-      POSTGRES_USER: law_user
-      POSTGRES_DB: law_assistant
-    volumes:
-      - ~/volumn/postgresql/data:/var/lib/postgresql/data
+      POSTGRES_USER: las_user
+      POSTGRES_PASSWORD: "las_passwd"
+      POSTGRES_DB: las
     restart: unless-stopped
+    # command: postgres -c shared_preload_libraries=pg_cron -c cron.database_name=las
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - postgres_logs:/var/log/postgres
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
+  postgres_logs:
