@@ -43,7 +43,8 @@
     "db:test-connection": "tsx scripts/test-prisma-connection.ts",
     "test:user-management": "ts-node tests/user_management_test.ts",
     "test:api": "ts-node tests/api_test.ts",
-    "test:mcp-servers": "tsx scripts/test-mcp-servers.ts"
+    "test:mcp-servers": "tsx scripts/test-mcp-servers.ts",
+    "test:mcp-filtering": "tsx tests/test_mcp_tool_filtering.ts"
   },
   "keywords": [],
   "author": "",
@@ -72,6 +73,7 @@
     "@langchain/community": "^1.1.15",
     "@langchain/core": "^1.1.26",
     "@langchain/langgraph": "^1.1.4",
+    "@langchain/langgraph-checkpoint-postgres": "^1.0.1",
     "@langchain/ollama": "^1.2.2",
     "@langchain/openai": "^1.2.7",
     "@line/bot-sdk": "^10.6.0",
