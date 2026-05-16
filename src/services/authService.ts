@@ -316,4 +316,21 @@ export class AuthService {
       throw error;
     }
   }
+
+  /**
+   * 删除用户账户及其所有相关数据
+   */
+  public async deleteAccount(userId: string): Promise<boolean> {
+    try {
+      // Prisma schema 中设置了 onDelete: Cascade，所以删除用户会同时删除其会话和消息
+      await this.prisma.user.delete({
+        where: { id: userId },
+      });
+      Logger.info('用户账户已删除', { userId });
+      return true;
+    } catch (error) {
+      Logger.error('删除账户失败', { userId, error: (error as Error).message });
+      throw new Error(`Failed to delete account: ${(error as Error).message}`);
+    }
+  }
 }

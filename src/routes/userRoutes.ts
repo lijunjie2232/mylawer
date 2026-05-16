@@ -298,4 +298,49 @@ router.get('/profile', authenticateToken, async (req: any, res: Response): Promi
   }
 });
 
+/**
+ * @openapi
+ * /api/user/delete:
+ *   delete:
+ *     summary: 删除当前用户账户
+ *     description: 彻底删除当前登录用户的账户及其所有聊天记录
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: 账户删除成功
+ *       401:
+ *         description: 未授权
+ */
+router.delete('/delete', authenticateToken, async (req: any, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: 'User ID not found in token',
+        timestamp: new Date().toISOString(),
+      });
+      return;
+    }
+
+    await authService.deleteAccount(userId);
+
+    res.json({
+      success: true,
+      message: 'Account and all associated data deleted successfully',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    Logger.error('删除账户失败', { error: (error as Error).message });
+    res.status(500).json({
+      success: false,
+      message: `Failed to delete account: ${(error as Error).message}`,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
 export default router;
