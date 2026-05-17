@@ -1,0 +1,14 @@
+{
+  "name": "line-bot-worker",
+  "version": "1.0.0",
+  "description": "LINE Bot test worker for Cloudflare Workers",
+  "main": "line-bot-test.js",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev line-bot-test.js",
+    "deploy": "wrangler deploy line-bot-test.js"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}

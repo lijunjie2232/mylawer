@@ -49,6 +49,10 @@ test-docker.sh
 *.md
 docs
 !README.md
+fig
+examples
+linebot
+worker
 
 # Test files
 tests
@@ -76,5 +80,11 @@ prisma/migrations
 .nyc_output
 .parcel-cache
 .cache
-
 volumn/
+.lingma
+.github
+gen.sh
+deploy-gh-pages.sh
+openrouter_free_model.py
+postgresql-dev.yml
+types
