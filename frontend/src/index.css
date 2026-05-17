@@ -42,3 +42,13 @@ tr:nth-child(even) {
   background-color: rgba(128, 128, 128, 0.05);
 }
 
+/* Chat input resize styles */
+.MuiInputBase-inputMultiline {
+  min-height: unset !important;
+}
+
+/* Ensure minimum height for chat input container */
+.chat-input-container {
+  min-height: 60px !important;
+}
+
