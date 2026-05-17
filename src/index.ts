@@ -4,7 +4,7 @@ import { LegalAgent } from './agents/legalAgent.js';
 import { Logger } from './utils/logger.js';
 import { config } from './config/environment.js';
 import { Server } from './server.js';
-import { Xvfb } from 'xvfb-ts';
+import * as readline from 'readline';
 
 class LawAssistant {
   private legalAgent: LegalAgent;
@@ -37,7 +37,6 @@ class LawAssistant {
    * インタラクティブコマンドラインインターフェースの起動
    */
   async startCLI() {
-    const readline = require('readline');
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout
@@ -153,58 +152,27 @@ const isMainModule = process.argv[1] && (
 );
 
 if (isMainModule) {
-  (async () => {
-    const xvfb = new Xvfb();
-    try {
-      // Start the virtual display
-      await xvfb.start();
-      Logger.info('Virtual display started');
-
-      // プロセス終了時に Xvfb を停止
-      process.on('exit', () => {
-        xvfb.stop();
-        Logger.info('Virtual display stopped on exit');
-      });
-
-      process.on('SIGINT', () => {
-        Logger.info('Received SIGINT, stopping...');
-        xvfb.stop();
-        Logger.info('Virtual display stopped');
-        process.exit(0);
-      });
-
-      process.on('SIGTERM', () => {
-        Logger.info('Received SIGTERM, stopping...');
-        xvfb.stop();
-        Logger.info('Virtual display stopped');
-        process.exit(0);
-      });
-
-      await main();
-    } catch (error: any) {
-      // 详细的错误处理
-      console.error('=== 启动错误详情 ===');
-      console.error('Error value:', error);
-      console.error('Error type:', typeof error);
-      console.error('Error constructor:', error?.constructor?.name);
-      console.error('Error message:', error?.message);
-      console.error('Error stack:', error?.stack);
-      console.error('Error keys:', Object.keys(error || {}));
-      console.error('===================');
-      
-      Logger.error('アプリケーション起動失敗', {
-        error: error ? (error as Error).message || error : 'unknown',
-        stack: (error as Error)?.stack,
-        errorType: typeof error,
-        errorCode: (error as any)?.code,
-        errorErrno: (error as any)?.errno
-      });
-      
-      xvfb.stop();
-      Logger.info('Virtual display stopped on error');
-      process.exit(1);
-    }
-  })();
+  main().catch((error: any) => {
+    // 详细的错误处理
+    console.error('=== 启动错误详情 ===');
+    console.error('Error value:', error);
+    console.error('Error type:', typeof error);
+    console.error('Error constructor:', error?.constructor?.name);
+    console.error('Error message:', error?.message);
+    console.error('Error stack:', error?.stack);
+    console.error('Error keys:', Object.keys(error || {}));
+    console.error('===================');
+    
+    Logger.error('アプリケーション起動失敗', {
+      error: error ? (error as Error).message || error : 'unknown',
+      stack: (error as Error)?.stack,
+      errorType: typeof error,
+      errorCode: (error as any)?.code,
+      errorErrno: (error as any)?.errno
+    });
+    
+    process.exit(1);
+  });
 }
 
 export { LawAssistant };

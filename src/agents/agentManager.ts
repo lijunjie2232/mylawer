@@ -58,7 +58,7 @@ export class AgentManager {
       name: config.llm.modelName,
       displayName: `${config.llm.modelProvider.toUpperCase()} - ${config.llm.modelName}`,
       provider: config.llm.modelProvider as 'openai' | 'anthropic',
-      baseUrl: config.llm.baseUrl,
+      baseUrl: config.llm.useFreeModel ? config.llm.freeModelBaseUrl : config.llm.baseUrl,
       apiKey: config.llm.apiKey,
       maxTokens: config.llm.maxTokens,
       temperature: config.llm.temperature,
