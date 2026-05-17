@@ -9,7 +9,7 @@ export const swaggerOptions: Options = {
     info: {
       title: '法的アシスタント API',
       version: '1.0.0',
-      description: '法律アシスタントLINE BotサーバーAPIドキュメント',
+      description: '法律アシスタントサーバーAPIドキュメント',
       contact: {
         name: 'Law Assistant Team',
         email: 'support@law-assistant.com'
@@ -22,14 +22,22 @@ export const swaggerOptions: Options = {
     servers: [
       {
         url: 'http://localhost:3000',
-        description: '開発環境サーバー'
+        description: 'Development server'
       },
       {
         url: 'https://your-domain.com',
-        description: '本番環境サーバー'
+        description: 'Production server'
       }
     ],
     components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description: 'JWT authentication token'
+        }
+      },
       schemas: {
         HealthResponse: {
           type: 'object',
@@ -54,7 +62,7 @@ export const swaggerOptions: Options = {
           properties: {
             message: {
               type: 'string',
-              example: '法的アシスタントサーバー'
+              example: 'Law Assistant Server'
             },
             version: {
               type: 'string',
@@ -79,25 +87,65 @@ export const swaggerOptions: Options = {
               properties: {
                 'GET /': {
                   type: 'string',
-                  example: '服务器信息'
+                  example: 'Server information'
                 },
                 'GET /health': {
                   type: 'string',
-                  example: '健康检查'
+                  example: 'Health check'
+                },
+                'GET /models': {
+                  type: 'string',
+                  example: 'Available models list'
                 },
                 'POST /webhook': {
                   type: 'string',
                   example: 'LINE Bot webhook'
                 },
-                'GET /api/docs': {
+                'POST /api/legal/query': {
                   type: 'string',
-                  example: 'API 文档'
+                  example: 'Legal consultation (synchronous)'
+                },
+                'POST /api/legal/query/stream': {
+                  type: 'string',
+                  example: 'Legal consultation (streaming)'
+                },
+                'POST /api/user/signup': {
+                  type: 'string',
+                  example: 'User registration'
+                },
+                'POST /api/user/login': {
+                  type: 'string',
+                  example: 'User login'
+                },
+                'GET /api/user/profile': {
+                  type: 'string',
+                  example: 'Get user profile'
+                },
+                'DELETE /api/user/delete': {
+                  type: 'string',
+                  example: 'Delete user account'
+                },
+                'POST /api/admin/login': {
+                  type: 'string',
+                  example: 'Admin login'
+                },
+                'GET /api/admin/dashboard': {
+                  type: 'string',
+                  example: 'Admin dashboard'
+                },
+                'GET /api/admin/users': {
+                  type: 'string',
+                  example: 'Get all users'
+                },
+                'GET /api/chat/sessions': {
+                  type: 'string',
+                  example: 'Get user sessions'
                 }
               }
             },
             description: {
               type: 'string',
-              example: '法的アシスタント LINE Bot サーバー API'
+              example: 'Law Assistant LINE Bot Server API'
             }
           }
         },
@@ -131,7 +179,7 @@ export const swaggerOptions: Options = {
             },
             description: {
               type: 'string',
-              example: '轻量级高性能模型'
+              example: 'Lightweight high-performance model'
             },
             isEnabled: {
               type: 'boolean',
@@ -181,13 +229,18 @@ export const swaggerOptions: Options = {
           properties: {
             question: {
               type: 'string',
-              description: '法律相关问题',
-              example: '日本の法律に窃盗罪が定義されていますか？'
+              description: 'Legal-related question',
+              example: 'Is theft defined in Japanese law?'
             },
             model: {
               type: 'string',
-              description: '使用的模型名称（可选）',
+              description: 'Model name to use (optional)',
               example: 'gpt-4o-mini'
+            },
+            sessionId: {
+              type: 'string',
+              description: 'Session ID for maintaining conversation history (optional)',
+              example: 'session_1234567890'
             }
           }
         },
@@ -200,15 +253,19 @@ export const swaggerOptions: Options = {
             },
             question: {
               type: 'string',
-              example: '日本の法律に窃盗罪が定義されていますか？'
+              example: 'Is theft defined in Japanese law?'
             },
             answer: {
               type: 'string',
-              example: 'はい、日本の刑法第235条に窃盗罪が定義されています。'
+              example: 'Yes, theft is defined in Article 235 of the Japanese Penal Code.'
             },
             modelUsed: {
               type: 'string',
               example: 'gpt-4o-mini'
+            },
+            sessionId: {
+              type: 'string',
+              example: 'session_1234567890'
             },
             timestamp: {
               type: 'string',
@@ -220,33 +277,202 @@ export const swaggerOptions: Options = {
               example: 'Failed to process legal query'
             }
           }
-        }
+        },
+        User: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              format: 'uuid',
+              example: '550e8400-e29b-41d4-a716-446655440000'
+            },
+            email: {
+              type: 'string',
+              format: 'email',
+              example: 'user@example.com'
+            },
+            name: {
+              type: 'string',
+              example: 'John Doe'
+            },
+            role: {
+              type: 'string',
+              enum: ['USER', 'ADMIN'],
+              example: 'USER'
+            },
+            isActive: {
+              type: 'boolean',
+              example: true
+            },
+            lastLoginAt: {
+              type: 'string',
+              format: 'date-time',
+              nullable: true
+            },
+            createdAt: {
+              type: 'string',
+              format: 'date-time'
+            },
+            updatedAt: {
+              type: 'string',
+              format: 'date-time'
+            }
+          }
+        },
+        LoginRequest: {
+          type: 'object',
+          required: ['email', 'password'],
+          properties: {
+            email: {
+              type: 'string',
+              format: 'email',
+              example: 'user@example.com'
+            },
+            password: {
+              type: 'string',
+              minLength: 8,
+              example: 'Password123!'
+            }
+          }
+        },
+        SignupRequest: {
+          type: 'object',
+          required: ['email', 'password', 'name'],
+          properties: {
+            email: {
+              type: 'string',
+              format: 'email',
+              example: 'user@example.com'
+            },
+            password: {
+              type: 'string',
+              minLength: 8,
+              example: 'Password123!'
+            },
+            name: {
+              type: 'string',
+              example: 'John Doe'
+            }
+          }
+        },
+        LoginResponse: {
+          type: 'object',
+          properties: {
+            success: {
+              type: 'boolean',
+              example: true
+            },
+            token: {
+              type: 'string',
+              example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+            },
+            expiresIn: {
+              type: 'number',
+              example: 86400
+            },
+            user: {
+              $ref: '#/components/schemas/User'
+            },
+            timestamp: {
+              type: 'string',
+              format: 'date-time'
+            }
+          }
+        },
+        SessionInfo: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              format: 'uuid',
+              example: '550e8400-e29b-41d4-a716-446655440000'
+            },
+            userId: {
+              type: 'string',
+              format: 'uuid'
+            },
+            title: {
+              type: 'string',
+              example: 'Legal consultation about theft'
+            },
+            createdAt: {
+              type: 'string',
+              format: 'date-time'
+            },
+            updatedAt: {
+              type: 'string',
+              format: 'date-time'
+            }
+          }
+        },
+        ChatMessage: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              format: 'uuid'
+            },
+            sessionId: {
+              type: 'string',
+              format: 'uuid'
+            },
+            role: {
+              type: 'string',
+              enum: ['user', 'assistant'],
+              example: 'user'
+            },
+            content: {
+              type: 'string',
+              example: 'What is the penalty for theft?'
+            },
+            createdAt: {
+              type: 'string',
+              format: 'date-time'
+            }
+          }
+        },
       }
     },
     tags: [
       {
         name: 'Health',
-        description: '服务器健康检查相关接口'
+        description: 'Server health check endpoints'
       },
       {
         name: 'Core',
-        description: '核心服务器信息接口'
+        description: 'Core server information endpoints'
       },
       {
         name: 'Models',
-        description: '模型管理相关接口'
+        description: 'Model management endpoints'
       },
       {
         name: 'Legal',
-        description: '法律咨询相关接口'
+        description: 'Legal consultation endpoints'
+      },
+      {
+        name: 'Sessions',
+        description: 'Chat session management endpoints'
+      },
+      {
+        name: 'User',
+        description: 'User authentication and profile management'
+      },
+      {
+        name: 'Admin',
+        description: 'Admin-only management endpoints'
+      },
+      {
+        name: 'Chat',
+        description: 'Chat history and session management'
       },
       {
         name: 'Webhook',
-        description: 'LINE Bot Webhook 接口'
+        description: 'LINE Bot webhook endpoints'
       },
       {
         name: 'Documentation',
-        description: 'API 文档接口'
+        description: 'API documentation endpoints'
       }
     ]
   },
