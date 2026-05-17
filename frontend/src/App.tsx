@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -25,7 +25,6 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Divider,
   Tooltip,
   ThemeProvider,
   createTheme,
@@ -39,8 +38,13 @@ import {
   Refresh as RefreshIcon,
   Psychology as AssistantIcon,
   Person as UserIcon,
-  AutoAwesome as ExamplesIcon
+  AutoAwesome as ExamplesIcon,
+  History as HistoryIcon,
+  Login as LoginIcon,
+  AccountCircle as AccountIcon
 } from '@mui/icons-material'
+import AuthDialog from './components/AuthDialog'
+import HistorySidebar from './components/HistorySidebar'
 
 // 型定義
 interface Message {
@@ -65,13 +69,93 @@ const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [status, setStatus] = useState<string>('')
   const [models, setModels] = useState<ModelInfo[]>([])
   const [selectedModel, setSelectedModel] = useState<string>('')
   const [isModelsLoading, setIsModelsLoading] = useState(true)
   const [sessionId, setSessionId] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   const [demoWarningOpen, setDemoWarningOpen] = useState(true)
-  
+  const [inputHeight, setInputHeight] = useState<number>(80) // Default height for input area
+  const [isDragging, setIsDragging] = useState<boolean>(false)
+
+  // Auth & History states
+  const [token, setToken] = useState<string | null>(localStorage.getItem('token'))
+  const [user, setUser] = useState<any>(null)
+  const [authDialogOpen, setAuthDialogOpen] = useState(false)
+  const [historySidebarOpen, setHistorySidebarOpen] = useState(false)
+
+  const containerRef = useRef<HTMLDivElement>(null)
+  const isDraggingRef = useRef<boolean>(false)
+
+  // Fetch user profile if token exists
+  useEffect(() => {
+    if (token) {
+      axios.get('/api/user/profile', {
+        headers: { Authorization: `Bearer ${token}` }
+      }).then(res => {
+        if (res.data.success) {
+          setUser(res.data.user)
+        }
+      }).catch(err => {
+        console.error('Failed to fetch profile', err)
+        handleLogout()
+      })
+    }
+  }, [token])
+
+  const handleAuthSuccess = (newToken: string, newUser: any) => {
+    setToken(newToken)
+    setUser(newUser)
+    localStorage.setItem('token', newToken)
+    startNewSession()
+  }
+
+  const handleLogout = () => {
+    setToken(null)
+    setUser(null)
+    localStorage.removeItem('token')
+    startNewSession()
+  }
+
+  const handleDeleteAccount = async () => {
+    try {
+      await axios.delete('/api/user/delete', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      handleLogout()
+    } catch (err) {
+      console.error('Failed to delete account', err)
+      setError('Failed to delete account')
+    }
+  }
+
+  const handleSelectSession = async (sid: string) => {
+    setSessionId(sid)
+    localStorage.setItem('sessionId', sid)
+    setMessages([])
+    setIsLoading(true)
+    try {
+      const response = await axios.get(`/api/chat/sessions/${sid}/messages`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (response.data.success) {
+        const historyMessages = response.data.messages.map((m: any) => ({
+          id: m.id,
+          content: m.content,
+          sender: m.role,
+          timestamp: new Date(m.createdAt)
+        }))
+        setMessages(historyMessages)
+      }
+    } catch (err) {
+      console.error('Failed to fetch session messages', err)
+      setError('Failed to load chat history')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   // テーマ設定
   const prefersDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -137,9 +221,11 @@ const App: React.FC = () => {
         setSessionId(savedSessionId)
         return
       }
-      
+
       try {
-        const response = await axios.post('/api/sessions/new')
+        const response = await axios.post('/api/sessions/new', {}, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        })
         if (response.data.success) {
           const newSessionId = response.data.sessionId
           setSessionId(newSessionId)
@@ -152,9 +238,42 @@ const App: React.FC = () => {
         localStorage.setItem('sessionId', fallbackSessionId)
       }
     }
-    
+
     initializeSession()
-  }, [])
+  }, [token]) // Re-run if token changes (e.g. login/logout)
+
+  // Setup global mouse events for dragging
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current || !containerRef.current) return;
+
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const newHeight = containerRect.bottom - e.clientY;
+
+      // Set min and max height constraints
+      const minHeight = 60;
+      const maxHeight = 400;
+
+      if (newHeight >= minHeight && newHeight <= maxHeight) {
+        setInputHeight(newHeight);
+      }
+    };
+
+    const handleMouseUp = () => {
+      isDraggingRef.current = false;
+      setIsDragging(false);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
 
   // モデルリストを取得
   useEffect(() => {
@@ -201,8 +320,10 @@ const App: React.FC = () => {
           console.log('古いセッションのクリアに失敗:', error)
         }
       }
-      
-      const response = await axios.post('/api/sessions/new')
+
+      const response = await axios.post('/api/sessions/new', {}, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      })
       if (response.data.success) {
         const newSessionId = response.data.sessionId
         setSessionId(newSessionId)
@@ -235,6 +356,7 @@ const App: React.FC = () => {
     setMessages(prev => [...prev, userMessage])
     setInputValue('')
     setIsLoading(true)
+    setStatus('回答を生成中...')
     setError(null)
 
     const assistantMessageId = (Date.now() + 1).toString()
@@ -251,6 +373,7 @@ const App: React.FC = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({
           question: inputValue,
@@ -278,39 +401,52 @@ const App: React.FC = () => {
 
           const chunk = decoder.decode(value)
           const lines = chunk.split('\n')
-          
+
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               try {
                 const data = JSON.parse(line.slice(6))
-                
+
                 switch (data.type) {
                   case 'start':
                     console.log('ストリーム開始')
                     break
-                    
+
+                  case 'tool_call':
+                    console.log('ツール呼び出し:', data.tool)
+                    setStatus(`${data.tool} を請求中、スビード低い場合もある...`)
+                    break
+
                   case 'content':
                     // LLM タイプのメッセージのみ表示、tool タイプをフィルタリング
                     if (data.messageType === 'llm' || !data.messageType) {
                       accumulatedContent += data.content
-                      setMessages(prev => prev.map(msg => 
-                        msg.id === assistantMessageId 
+                      setStatus('回答を入力中...')
+                      setMessages(prev => prev.map(msg =>
+                        msg.id === assistantMessageId
                           ? { ...msg, content: accumulatedContent }
                           : msg
                       ))
                     }
                     break
-                    
+
                   case 'complete':
                     console.log('ストリーム完了', {
                       messageType: data.messageType,
                       modelUsed: data.modelUsed
                     })
+                    setStatus('')
+                    // 如果后端返回了新的 sessionId（例如从匿名转为已登录），更新它
+                    if (data.sessionId && data.sessionId !== sessionId) {
+                      setSessionId(data.sessionId)
+                      localStorage.setItem('sessionId', data.sessionId)
+                    }
                     break
-                    
+
                   case 'error':
-                    setMessages(prev => prev.map(msg => 
-                      msg.id === assistantMessageId 
+                    setStatus('エラーが発生しました')
+                    setMessages(prev => prev.map(msg =>
+                      msg.id === assistantMessageId
                         ? { ...msg, content: `エラー：${data.error}` }
                         : msg
                     ))
@@ -326,6 +462,7 @@ const App: React.FC = () => {
       } finally {
         reader.releaseLock()
         setIsLoading(false)
+        setStatus('')
       }
 
     } catch (error) {
@@ -335,16 +472,23 @@ const App: React.FC = () => {
           question: inputValue,
           model: selectedModel,
           sessionId: sessionId
+        }, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
         })
 
-        setMessages(prev => prev.map(msg => 
-          msg.id === assistantMessageId 
+        if (response.data.sessionId && response.data.sessionId !== sessionId) {
+          setSessionId(response.data.sessionId)
+          localStorage.setItem('sessionId', response.data.sessionId)
+        }
+
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantMessageId
             ? { ...msg, content: response.data.answer }
             : msg
         ))
       } catch (apiError) {
-        setMessages(prev => prev.map(msg => 
-          msg.id === assistantMessageId 
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantMessageId
             ? { ...msg, content: '申し訳ありませんが、リクエストの処理中にエラーが発生しました。後ほど再度お試しください。' }
             : msg
         ))
@@ -361,9 +505,10 @@ const App: React.FC = () => {
     '窃盗罪の定義を教えてください？',
     '詐欺罪と横領罪の違いは何ですか？',
     '正当防衛が認められる要件を教えてください。',
-    
+    '"マッチ売りの少女"という物語の少女には業務横領を犯しましたのか？',
+
     // 民法関連
-    '婚姻届を提出する際に必要な書類と手続きを教えてください。',
+    '横浜市では婚姻届を提出する際に必要な書類と手続きを教えてください。',
     '隣人との騒音トラブルに対する法的措置は何がありますか？',
     '借金返済が困難になった場合の法的対応を教えてください。',
   ]
@@ -375,6 +520,15 @@ const App: React.FC = () => {
         {/* ヘッダー */}
         <AppBar position="sticky" color="primary" elevation={1}>
           <Toolbar>
+            <IconButton
+              color="inherit"
+              edge="start"
+              onClick={() => setHistorySidebarOpen(true)}
+              sx={{ mr: 2 }}
+              disabled={!token}
+            >
+              <HistoryIcon />
+            </IconButton>
             <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
               <LawIcon />
             </Avatar>
@@ -386,7 +540,7 @@ const App: React.FC = () => {
                 プロフェッショナル法律相談サービス
               </Typography>
             </Box>
-            
+
             <FormControl size="small" sx={{ minWidth: 200, mr: 2 }}>
               <InputLabel shrink>AI モデル</InputLabel>
               <Select
@@ -430,11 +584,44 @@ const App: React.FC = () => {
                 {isDarkMode ? <LightModeIcon /> : <DarkModeIcon />}
               </IconButton>
             </Tooltip>
+
+            {token ? (
+              <Tooltip title={user?.name || 'Profile'}>
+                <IconButton color="inherit" onClick={() => setHistorySidebarOpen(true)}>
+                  <AccountIcon />
+                </IconButton>
+              </Tooltip>
+            ) : (
+              <Button
+                color="inherit"
+                startIcon={<LoginIcon />}
+                onClick={() => setAuthDialogOpen(true)}
+              >
+                Login
+              </Button>
+            )}
           </Toolbar>
         </AppBar>
 
+        {/* Auth Dialog */}
+        <AuthDialog
+          open={authDialogOpen}
+          onClose={() => setAuthDialogOpen(false)}
+          onSuccess={handleAuthSuccess}
+        />
+
+        {/* History Sidebar */}
+        <HistorySidebar
+          open={historySidebarOpen}
+          onClose={() => setHistorySidebarOpen(false)}
+          onSelectSession={handleSelectSession}
+          onLogout={handleLogout}
+          onDeleteAccount={handleDeleteAccount}
+          token={token}
+        />
+
         {/* メインコンテンツ */}
-        <Container maxWidth="lg" sx={{ flexGrow: 1, py: 3 }}>
+        <Container maxWidth="lg" sx={{ flexGrow: 1, py: 3 }} ref={containerRef}>
           <Paper
             elevation={3}
             sx={{
@@ -450,6 +637,7 @@ const App: React.FC = () => {
                 flexGrow: 1,
                 overflow: 'auto',
                 p: 2,
+                minHeight: 0, // Important for flex child scrolling
               }}
             >
               {messages.length === 0 ? (
@@ -470,7 +658,7 @@ const App: React.FC = () => {
                   <Typography variant="body1" color="text.secondary" paragraph>
                     私はあなたのプロフェッショナルな法律顧問で、正確な法律相談サービスをいつでも提供します。
                   </Typography>
-                  
+
                   <Box sx={{ mt: 4, width: '100%', maxWidth: 600 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                       <ExamplesIcon sx={{ mr: 1, color: 'primary.main' }} />
@@ -526,6 +714,7 @@ const App: React.FC = () => {
                           maxWidth: '70%',
                           bgcolor: message.sender === 'user' ? 'primary.main' : 'background.paper',
                           color: message.sender === 'user' ? 'primary.contrastText' : 'text.primary',
+                          mr: message.sender === 'user' ? 1 : 0, // Add right margin for user messages to move bubble left from avatar
                         }}
                       >
                         {message.sender === 'assistant' ? (
@@ -533,17 +722,17 @@ const App: React.FC = () => {
                             remarkPlugins={[remarkGfm]}
                             rehypePlugins={[rehypeRaw]}
                             components={{
-                              table: ({node, ...props}) => (
+                              table: ({ node, ...props }) => (
                                 <Box sx={{ overflowX: 'auto', my: 2 }}>
                                   <table {...props} />
                                 </Box>
                               ),
-                              th: ({node, children, ...props}) => (
+                              th: ({ node, children, ...props }) => (
                                 <th {...props} style={{ padding: '8px', borderBottom: '2px solid currentColor' }}>
                                   {children}
                                 </th>
                               ),
-                              td: ({node, children, ...props}) => (
+                              td: ({ node, children, ...props }) => (
                                 <td {...props} style={{ padding: '8px', borderBottom: '1px solid currentColor' }}>
                                   {children}
                                 </td>
@@ -576,7 +765,7 @@ const App: React.FC = () => {
                       )}
                     </ListItem>
                   ))}
-                  
+
                   {isLoading && (
                     <ListItem>
                       <ListItemAvatar>
@@ -588,7 +777,7 @@ const App: React.FC = () => {
                         <Box sx={{ display: 'flex', gap: 1 }}>
                           <CircularProgress size={20} />
                           <Typography variant="body2" color="text.secondary">
-                            回答を生成中...
+                            {status}
                           </Typography>
                         </Box>
                       </Paper>
@@ -598,15 +787,76 @@ const App: React.FC = () => {
               )}
             </Box>
 
-            <Divider />
+            {/* Resizable Divider */}
+            <Box
+              sx={{
+                height: '8px',
+                bgcolor: isDragging ? 'primary.main' : 'divider',
+                cursor: 'ns-resize',
+                '&:hover': {
+                  bgcolor: 'primary.light',
+                },
+                position: 'relative',
+                zIndex: 1,
+                transition: 'background-color 0.2s',
+              }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                isDraggingRef.current = true;
+                setIsDragging(true);
+                document.body.style.cursor = 'ns-resize';
+                document.body.style.userSelect = 'none';
+              }}
+            >
+              <Box
+                sx={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: '40px',
+                  height: '4px',
+                  bgcolor: 'text.secondary',
+                  borderRadius: '2px',
+                  opacity: 0.5,
+                }}
+              />
+            </Box>
 
             {/* 入力フォーム */}
-            <Box component="form" onSubmit={handleSubmit} sx={{ p: 2, bgcolor: 'background.paper' }}>
-              <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-end' }}>
+            <Box
+              component="form"
+              onSubmit={handleSubmit}
+              className="chat-input-container"
+              sx={{
+                p: 2,
+                bgcolor: 'background.paper',
+                height: `${inputHeight}px`,
+                minHeight: '60px',
+                display: 'flex',
+                flexDirection: 'column',
+                transition: 'height 0.1s ease',
+                position: 'relative',
+              }}
+            >
+              {/* Height indicator (temporary for debugging) */}
+              <Typography
+                variant="caption"
+                sx={{
+                  position: 'absolute',
+                  top: 4,
+                  right: 8,
+                  opacity: 0.5,
+                  pointerEvents: 'none',
+                }}
+              >
+                {Math.round(inputHeight)}px
+              </Typography>
+
+              <Box sx={{ display: 'flex', gap: 2, alignItems: 'stretch', flexGrow: 1, minHeight: 0 }}>
                 <TextField
                   fullWidth
                   multiline
-                  maxRows={4}
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   placeholder="法律相談のご質問を入力してください..."
@@ -619,13 +869,32 @@ const App: React.FC = () => {
                       handleSubmit(e)
                     }
                   }}
+                  InputProps={{
+                    sx: {
+                      height: '100%',
+                      alignItems: 'flex-start',
+                      paddingTop: '8px',
+                      paddingBottom: '8px',
+                    }
+                  }}
+                  inputProps={{
+                    style: {
+                      height: '100%',
+                      overflowY: 'auto',
+                      resize: 'none',
+                    }
+                  }}
                 />
                 <Button
                   type="submit"
                   variant="contained"
                   color="primary"
                   disabled={!inputValue.trim() || isLoading}
-                  sx={{ minWidth: 100, height: 56 }}
+                  sx={{
+                    minWidth: 100,
+                    alignSelf: 'flex-end',
+                    height: '56px',
+                  }}
                 >
                   {isLoading ? '送信中...' : <SendIcon />}
                 </Button>
@@ -649,27 +918,60 @@ const App: React.FC = () => {
         {/* デモ警告通知 */}
         <Snackbar
           open={demoWarningOpen}
-          autoHideDuration={15000}
+          autoHideDuration={30000}
           onClose={() => setDemoWarningOpen(false)}
           anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
         >
-          <Alert 
-            onClose={() => setDemoWarningOpen(false)} 
+          <Alert
+            onClose={() => setDemoWarningOpen(false)}
             severity="warning"
-            sx={{ width: '100%' }}
+            sx={{
+              width: '100%',
+              maxWidth: 600,
+              '& .MuiAlert-message': {
+                width: '100%',
+              }
+            }}
           >
-            <Typography variant="body2">
-              <strong>デモ環境についてのお知らせ：</strong>
-            </Typography>
-            <Typography variant="body2">
-              これはデモ環境のため、LLM の実行速度が遅い場合があります。
-            </Typography>
-            <Typography variant="body2">
-              おすすめの LLM モデルは <strong>gpt-oss:20b</strong> です。
-            </Typography>
-            <Typography variant="body2">
-              モデルの初回ロード時は、GPU が使用されている場合、遅くなったり失敗したりする可能性があります。
-            </Typography>
+            <Box sx={{ width: '100%' }}>
+              <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                ⚠️ デモ環境についてのお知らせ
+              </Typography>
+              <Box component="ul" sx={{ m: 0, pl: 2, mt: 1 }}>
+                <Typography component="li" variant="body2" sx={{ mb: 0.5 }}>
+                  デモ環境のため、LLM の応答速度が遅い場合があります。
+                </Typography>
+                <Typography component="li" variant="body2" sx={{ mb: 0.5 }}>
+                  OpenRouter の無料モデルを使用しているため、遅延やエラーが発生する可能性があります。リクエストが失敗する場合は、他のモデルをお試しください。
+                </Typography>
+                <Typography component="li" variant="body2" sx={{ mb: 0.5 }}>
+                  会話履歴機能をご利用いただくには、アカウントの作成が必要です。作成したアカウントはユーザー自身で削除できます。
+                </Typography>
+                <Typography component="li" variant="body2">
+                  定期的にアカウントを削除しておりますので、ご了承ください。
+                </Typography>
+                <Typography component="li" variant="body2" sx={{
+                  mt: 1,
+                  p: 1,
+                  bgcolor: 'action.selected',
+                  borderRadius: 1,
+                  borderLeft: 3,
+                  borderColor: 'primary.main'
+                }}>
+                  💡 <strong>より高速で安定した利用をご希望の方へ：</strong><br />
+                  プライベートデプロイメントをおすすめします。
+                  <br />
+                  GitHub: <a
+                    href="https://github.com/lijunjie2232/mylawer"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: theme.palette.primary.main, textDecoration: 'underline' }}
+                  >
+                    https://github.com/lijunjie2232/mylawer
+                  </a>
+                </Typography>
+              </Box>
+            </Box>
           </Alert>
         </Snackbar>
       </Box>
