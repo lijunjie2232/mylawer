@@ -101,7 +101,7 @@ export class WebpageLoaderTool extends DynamicTool {
       await context.addInitScript(() => {
         delete Object.getPrototypeOf(navigator).webdriver;
 
-        // 设置语言偏好
+        // 言語設定を構成
         Object.defineProperty(navigator, 'language', {
           get: () => window.navigator.language || 'ja-JP'
         });
@@ -113,7 +113,7 @@ export class WebpageLoaderTool extends DynamicTool {
 
       const page = await context.newPage();
 
-      // 设置用户代理
+      // ユーザーエージェントを設定
       await page.setExtraHTTPHeaders({
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept-Language': `${this.language},${this.language.split('-')[0] || 'ja'};q=0.9,en;q=0.8`
@@ -141,7 +141,7 @@ export class WebpageLoaderTool extends DynamicTool {
 
       // 2. JS インジェクトにより DOM をクリーンアップ（ページレベル）- ダウンロード済みの DOM ノードをクリーンアップ
       await page.evaluate(() => {
-        // 定义需要清理的标签类型
+        // クリーンアップするタグタイプを定義
         const tagsToRemove = ['img', 'svg', 'canvas', 'video', 'picture', 'iframe', 'object'];
               
         tagsToRemove.forEach(tag => {
