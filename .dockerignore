@@ -59,7 +59,6 @@ tests
 test_*.ts
 *_test.ts
 demo_*.ts
-playwright.config.ts
 
 # Scripts
 # Don't exclude all scripts as some are needed in container
