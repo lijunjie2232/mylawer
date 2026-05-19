@@ -18,7 +18,7 @@ const envSchema = z.object({
   LLM_API_KEY: z.string().min(1, 'LLM_API_KEY is required and cannot be empty'),
   
   // Free Model 設定
-  USE_FREE_MODEL: z.string().transform(v => v === 'true').default('false'),
+  USE_FREE_MODEL: z.string().transform(v => v === 'true').default(false),
   FREE_MODEL_BASE_URL: z.string().default('https://openrouter.ai/api/v1'),
   DEFAULT_MODEL: z.string().optional(),
   

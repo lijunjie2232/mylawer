@@ -44,19 +44,24 @@ export class ModelManager {
   /**
    * 非同期でモデル設定を初期化
    * LLM サーバーから /v1/models エンドポイントを照会して、動的にモデル設定を構築
+   * @param force 強制的に再初期化するかどうか
    */
-  public async initialize(): Promise<void> {
-    if (this.isInitialized) {
+  public async initialize(force: boolean = false): Promise<void> {
+    if (this.isInitialized && !force) {
       return;
     }
 
-    if (this.initializationPromise) {
+    if (this.initializationPromise && !force) {
       return this.initializationPromise;
     }
 
     this.initializationPromise = this.initializeModelsFromServer();
-    await this.initializationPromise;
-    this.isInitialized = true;
+    try {
+      await this.initializationPromise;
+      this.isInitialized = true;
+    } finally {
+      this.initializationPromise = null;
+    }
   }
 
   /**
@@ -99,7 +104,8 @@ export class ModelManager {
         return;
       }
 
-      // 各モデルの設定を構築
+      // 新しいモデル設定を構築
+      const newModels = new Map<string, ModelConfig>();
       for (const model of llmModels) {
         const modelConfig: ModelConfig = {
           name: model.id,
@@ -113,9 +119,10 @@ export class ModelManager {
           isEnabled: true
         };
 
-        this.models.set(modelConfig.name, modelConfig);
+        newModels.set(modelConfig.name, modelConfig);
       }
 
+      this.models = newModels;
       Logger.info(`${this.models.size} 個のモデル設定を LLM サーバーから読み込みました`);
 
     } catch (error) {
@@ -164,7 +171,8 @@ export class ModelManager {
         return;
       }
 
-      // 各モデルの設定を構築
+      // 新しいモデル設定を構築
+      const newModels = new Map<string, ModelConfig>();
       for (const model of orModels) {
         const modelId = model.endpoint?.model_variant_slug;
         if (!modelId) continue;
@@ -181,9 +189,10 @@ export class ModelManager {
           isEnabled: true
         };
 
-        this.models.set(modelConfig.name, modelConfig);
+        newModels.set(modelConfig.name, modelConfig);
       }
 
+      this.models = newModels;
       Logger.info(`${this.models.size} 個の無料モデル設定を OpenRouter から読み込みました`);
 
     } catch (error) {
@@ -200,6 +209,8 @@ export class ModelManager {
   private initializeFallbackModels(): void {
     Logger.info('フォールバックモデル設定を初期化中...');
 
+    const newModels = new Map<string, ModelConfig>();
+
     // 主要モデル配置（来自环境变量）
     const primaryModel: ModelConfig = {
       name: config.llm.modelName,
@@ -213,52 +224,21 @@ export class ModelManager {
       isEnabled: true
     };
 
-    this.models.set(primaryModel.name, primaryModel);
+    newModels.set(primaryModel.name, primaryModel);
 
     // 添加一些常见的备选模型配置
     const alternativeModels: ModelConfig[] = [
-      // {
-      //   name: 'gpt-4o-mini',
-      //   displayName: 'OpenAI - GPT-4o Mini',
-      //   provider: 'openai',
-      //   baseUrl: 'https://api.openai.com/v1',
-      //   apiKey: process.env.LLM_API_KEY,
-      //   maxTokens: 8192,
-      //   temperature: 0.7,
-      //   description: '轻量级高性能模型',
-      //   isEnabled: !!process.env.LLM_API_KEY
-      // },
-      // {
-      //   name: 'gpt-4o',
-      //   displayName: 'OpenAI - GPT-4o',
-      //   provider: 'openai',
-      //   baseUrl: 'https://api.openai.com/v1',
-      //   apiKey: process.env.LLM_API_KEY,
-      //   maxTokens: 16384,
-      //   temperature: 0.7,
-      //   description: '最新旗舰模型',
-      //   isEnabled: !!process.env.LLM_API_KEY
-      // },
-      // {
-      //   name: 'claude-3-haiku',
-      //   displayName: 'Anthropic - Claude 3 Haiku',
-      //   provider: 'anthropic',
-      //   baseUrl: 'https://api.anthropic.com/v1',
-      //   apiKey: process.env.LLM_API_KEY,
-      //   maxTokens: 4096,
-      //   temperature: 0.7,
-      //   description: '快速且经济的模型',
-      //   isEnabled: !!process.env.LLM_API_KEY
-      // }
+      // ... (rest of the models code can stay as is or I can keep the commented out parts)
     ];
 
     // 添加备选模型
     alternativeModels.forEach(model => {
-      if (!this.models.has(model.name)) {
-        this.models.set(model.name, model);
+      if (!newModels.has(model.name)) {
+        newModels.set(model.name, model);
       }
     });
 
+    this.models = newModels;
     Logger.info(`${this.models.size} 個のフォールバックモデル設定を読み込みました`);
   }
 

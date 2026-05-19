@@ -189,6 +189,7 @@ export class Server {
     // Try multiple paths for different deployment scenarios
     const possiblePaths = [
       path.join(__dirname, '../frontend/dist'),
+      path.join(process.cwd(), './frontend/dist'),
       path.join(__dirname, 'dist/frontend'),
       path.join(process.cwd(), 'dist/frontend')
     ];
@@ -238,9 +239,9 @@ export class Server {
       try {
         Logger.info('モデルリスト取得リクエスト');
     
-        // ModelManager が初期化されていることを確認
+        // ModelManager から最新のモデルリストを強制的に取得
         const modelManager = ModelManager.getInstance();
-        await modelManager.initialize();
+        await modelManager.initialize(true);
     
         // ModelManager からすべての有効なモデルを取得
         let models = modelManager.getEnabledModels().map(model => ({
