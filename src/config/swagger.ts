@@ -7,12 +7,13 @@ export const swaggerOptions: Options = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: '法的アシスタント API',
-      version: '1.0.0',
-      description: '法律アシスタントサーバーAPIドキュメント',
+      title: '法律アシスタント API',
+      version: '2.0.0',
+      description: '法律アシスタントサーバーAPIドキュメント - AI搭載の法律相談アシスタント',
       contact: {
-        name: 'Law Assistant Team',
-        email: 'support@law-assistant.com'
+        name: 'lijunjie2232',
+        url: 'https://blog.lijunjie.dpdns.org',
+        email: 'li2533584225@gmail.com'
       },
       license: {
         name: 'GPL-3.0',
@@ -22,11 +23,11 @@ export const swaggerOptions: Options = {
     servers: [
       {
         url: 'http://localhost:3000',
-        description: 'Development server'
+        description: '開発環境サーバー'
       },
       {
         url: 'https://your-domain.com',
-        description: 'Production server'
+        description: '本番環境サーバー'
       }
     ],
     components: {
@@ -35,7 +36,7 @@ export const swaggerOptions: Options = {
           type: 'http',
           scheme: 'bearer',
           bearerFormat: 'JWT',
-          description: 'JWT authentication token'
+          description: 'JWT 認証トークン'
         }
       },
       schemas: {
@@ -62,7 +63,7 @@ export const swaggerOptions: Options = {
           properties: {
             message: {
               type: 'string',
-              example: 'Law Assistant Server'
+              example: '法律アシスタントサーバー'
             },
             version: {
               type: 'string',
@@ -87,15 +88,15 @@ export const swaggerOptions: Options = {
               properties: {
                 'GET /': {
                   type: 'string',
-                  example: 'Server information'
+                  example: 'サーバー情報'
                 },
                 'GET /health': {
                   type: 'string',
-                  example: 'Health check'
+                  example: 'ヘルスチェック'
                 },
                 'GET /models': {
                   type: 'string',
-                  example: 'Available models list'
+                  example: '利用可能なモデル一覧'
                 },
                 'POST /webhook': {
                   type: 'string',
@@ -103,49 +104,49 @@ export const swaggerOptions: Options = {
                 },
                 'POST /api/legal/query': {
                   type: 'string',
-                  example: 'Legal consultation (synchronous)'
+                  example: '法律相談（同期レスポンス）'
                 },
                 'POST /api/legal/query/stream': {
                   type: 'string',
-                  example: 'Legal consultation (streaming)'
+                  example: '法律相談（ストリーミングレスポンス）'
                 },
                 'POST /api/user/signup': {
                   type: 'string',
-                  example: 'User registration'
+                  example: 'ユーザー登録'
                 },
                 'POST /api/user/login': {
                   type: 'string',
-                  example: 'User login'
+                  example: 'ユーザーログイン'
                 },
                 'GET /api/user/profile': {
                   type: 'string',
-                  example: 'Get user profile'
+                  example: 'ユーザー情報取得'
                 },
                 'DELETE /api/user/delete': {
                   type: 'string',
-                  example: 'Delete user account'
+                  example: 'ユーザーアカウント削除'
                 },
                 'POST /api/admin/login': {
                   type: 'string',
-                  example: 'Admin login'
+                  example: '管理者ログイン'
                 },
                 'GET /api/admin/dashboard': {
                   type: 'string',
-                  example: 'Admin dashboard'
+                  example: '管理者ダッシュボード'
                 },
                 'GET /api/admin/users': {
                   type: 'string',
-                  example: 'Get all users'
+                  example: '全ユーザー取得'
                 },
                 'GET /api/chat/sessions': {
                   type: 'string',
-                  example: 'Get user sessions'
+                  example: 'ユーザーセッション取得'
                 }
               }
             },
             description: {
               type: 'string',
-              example: 'Law Assistant LINE Bot Server API'
+              example: '法律アシスタント LINE Bot サーバー API'
             }
           }
         },
@@ -179,7 +180,7 @@ export const swaggerOptions: Options = {
             },
             description: {
               type: 'string',
-              example: 'Lightweight high-performance model'
+              example: '軽量高性能モデル'
             },
             isEnabled: {
               type: 'boolean',
@@ -229,17 +230,17 @@ export const swaggerOptions: Options = {
           properties: {
             question: {
               type: 'string',
-              description: 'Legal-related question',
-              example: 'Is theft defined in Japanese law?'
+              description: '法律関連の質問',
+              example: '日本の法律に窃盗罪は定義されていますか？'
             },
             model: {
               type: 'string',
-              description: 'Model name to use (optional)',
+              description: '使用するモデル名（オプション）',
               example: 'gpt-4o-mini'
             },
             sessionId: {
               type: 'string',
-              description: 'Session ID for maintaining conversation history (optional)',
+              description: '会話履歴を維持するためのセッションID（オプション）',
               example: 'session_1234567890'
             }
           }
@@ -253,11 +254,11 @@ export const swaggerOptions: Options = {
             },
             question: {
               type: 'string',
-              example: 'Is theft defined in Japanese law?'
+              example: '日本の法律に窃盗罪は定義されていますか？'
             },
             answer: {
               type: 'string',
-              example: 'Yes, theft is defined in Article 235 of the Japanese Penal Code.'
+              example: 'はい、日本の刑法第235条に窃盗罪が定義されています。'
             },
             modelUsed: {
               type: 'string',
@@ -393,7 +394,7 @@ export const swaggerOptions: Options = {
             },
             title: {
               type: 'string',
-              example: 'Legal consultation about theft'
+              example: '窃盗に関する法律相談'
             },
             createdAt: {
               type: 'string',
@@ -423,7 +424,7 @@ export const swaggerOptions: Options = {
             },
             content: {
               type: 'string',
-              example: 'What is the penalty for theft?'
+              example: '窃盗の罰則は何ですか？'
             },
             createdAt: {
               type: 'string',
@@ -436,43 +437,43 @@ export const swaggerOptions: Options = {
     tags: [
       {
         name: 'Health',
-        description: 'Server health check endpoints'
+        description: 'サーバーヘルスチェック関連エンドポイント'
       },
       {
         name: 'Core',
-        description: 'Core server information endpoints'
+        description: 'コアサーバー情報エンドポイント'
       },
       {
         name: 'Models',
-        description: 'Model management endpoints'
+        description: 'モデル管理エンドポイント'
       },
       {
         name: 'Legal',
-        description: 'Legal consultation endpoints'
+        description: '法律相談エンドポイント'
       },
       {
         name: 'Sessions',
-        description: 'Chat session management endpoints'
+        description: 'チャットセッション管理エンドポイント'
       },
       {
         name: 'User',
-        description: 'User authentication and profile management'
+        description: 'ユーザー認証とプロフィール管理'
       },
       {
         name: 'Admin',
-        description: 'Admin-only management endpoints'
+        description: '管理者専用管理エンドポイント'
       },
       {
         name: 'Chat',
-        description: 'Chat history and session management'
+        description: 'チャット履歴とセッション管理'
       },
       {
         name: 'Webhook',
-        description: 'LINE Bot webhook endpoints'
+        description: 'LINE Bot webhook エンドポイント'
       },
       {
         name: 'Documentation',
-        description: 'API documentation endpoints'
+        description: 'API ドキュメントエンドポイント'
       }
     ]
   },
