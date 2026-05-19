@@ -11,8 +11,8 @@ const authService = AuthService.getInstance();
  * @openapi
  * /api/user/signup:
  *   post:
- *     summary: 用户注册
- *     description: 创建新的普通用户账户
+ *     summary: ユーザー登録
+ *     description: 新しい一般ユーザーアカウントを作成
  *     tags: [User]
  *     requestBody:
  *       required: true
@@ -35,10 +35,10 @@ const authService = AuthService.getInstance();
  *                 example: Password123!
  *               name:
  *                 type: string
- *                 example: 用户名
+ *                 example: ユーザー名
  *     responses:
  *       201:
- *         description: 用户创建成功
+ *         description: ユーザー作成成功
  *         content:
  *           application/json:
  *             schema:
@@ -53,15 +53,15 @@ const authService = AuthService.getInstance();
  *                 timestamp:
  *                   type: string
  *       400:
- *         description: 请求参数错误
+ *         description: リクエストパラメータエラー
  *       409:
- *         description: 邮箱已被注册
+ *         description: メールアドレスは既に登録されています
  */
 router.post('/signup', async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password, name }: SignupRequest = req.body;
 
-    // 验证必填字段
+    // 必須フィールドを検証
     if (!email || !password || !name) {
       res.status(400).json({
         success: false,
@@ -71,7 +71,7 @@ router.post('/signup', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // 验证邮箱格式
+    // メールアドレス形式を検証
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       res.status(400).json({
@@ -82,7 +82,7 @@ router.post('/signup', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // 验证密码强度
+    // パスワード強度を検証
     if (password.length < 8) {
       res.status(400).json({
         success: false,
@@ -92,7 +92,7 @@ router.post('/signup', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // 检查邮箱是否已存在
+    // メールアドレスが既に存在するか確認
     const existingUser = await authService.findUserByEmail(email);
     if (existingUser) {
       res.status(409).json({
@@ -103,10 +103,10 @@ router.post('/signup', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // 获取或创建 USER 角色
+    // USER ロールを取得または作成
     const { userRole } = await authService.getOrCreateDefaultRoles();
 
-    // 创建用户
+    // ユーザーを作成
     const user = await authService.createUser({
       email,
       password,
@@ -114,7 +114,7 @@ router.post('/signup', async (req: Request, res: Response): Promise<void> => {
       roleId: userRole.id,
     });
 
-    Logger.info('用户注册成功', { email, userId: user.id });
+    Logger.info('ユーザー登録成功', { email, userId: user.id });
 
     res.status(201).json({
       success: true,
@@ -129,7 +129,7 @@ router.post('/signup', async (req: Request, res: Response): Promise<void> => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    Logger.error('用户注册失败', { error: (error as Error).message });
+    Logger.error('ユーザー登録失敗', { error: (error as Error).message });
     res.status(500).json({
       success: false,
       message: `Failed to create user: ${(error as Error).message}`,
@@ -142,8 +142,8 @@ router.post('/signup', async (req: Request, res: Response): Promise<void> => {
  * @openapi
  * /api/user/login:
  *   post:
- *     summary: 用户登录
- *     description: 用户登录并获取 JWT Token
+ *     summary: ユーザーログイン
+ *     description: ユーザーログインして JWT トークンを取得
  *     tags: [User]
  *     requestBody:
  *       required: true

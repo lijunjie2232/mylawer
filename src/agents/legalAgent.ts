@@ -285,35 +285,35 @@ export class LegalAgent {
     }
     
     /**
-     * 既定の会话 ID を生成
+     * 既定のセッション ID を生成
      */
     private generateDefaultSessionId(): string {
         return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }
 
     /**
-     * 会话統計情報を取得
+     * セッション統計情報を取得
      */
     getSessionStats() {
         return this.sessionMemory.getSessionStats();
     }
 
     /**
-     * 会话をクリア
+     * セッションをクリア
      */
     clearSession(sessionId: string): void {
         this.sessionMemory.clearSession(sessionId);
     }
 
     /**
-     * 会话コンテキストを取得
+     * セッションコンテキストを取得
      */
     getSessionContext(sessionId: string): Record<string, any> {
         return this.sessionMemory.getContext(sessionId);
     }
 
     /**
-     * 会话コンテキストを更新
+     * セッションコンテキストを更新
      */
     updateSessionContext(sessionId: string, context: Record<string, any>): void {
         this.sessionMemory.updateContext(sessionId, context);

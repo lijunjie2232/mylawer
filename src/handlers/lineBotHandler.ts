@@ -13,7 +13,7 @@ export class LineBotHandler {
   private legalAgent: LegalAgent;
 
   constructor() {
-    // 初始化 LINE Bot 客户端
+    // LINE Bot クライアントを初期化
     this.client = new Client({
       channelAccessToken: config.line.accessToken || '',
       channelSecret: config.line.channelSecret || ''
@@ -21,34 +21,34 @@ export class LineBotHandler {
 
     this.legalAgent = new LegalAgent();
     
-    Logger.info('LINE Bot 处理器初始化完成', {
+    Logger.info('LINE Bot ハンドラーの初期化が完了しました', {
       hasChannelSecret: !!config.line.channelSecret,
       hasAccessToken: !!config.line.accessToken
     });
   }
 
   /**
-   * 处理 LINE webhook 事件
+   * LINE webhook イベントを処理
    */
   async handleWebhook(body: LineWebhookBody): Promise<void> {
     if (!body.events || body.events.length === 0) {
-      Logger.warn('收到空的 webhook 事件');
+      Logger.warn('空の webhook イベントを受信しました');
       return;
     }
 
-    Logger.info('处理 LINE webhook 事件', { eventCount: body.events.length });
+    Logger.info('LINE webhook イベントを処理中', { eventCount: body.events.length });
 
-    // 并行处理所有事件
+    // すべてのイベントを並列処理
     const promises = body.events.map(event => this.handleEvent(event));
     await Promise.all(promises);
   }
 
   /**
-   * 处理单个事件
+   * 単一イベントを処理
    */
   private async handleEvent(event: LineWebhookEvent): Promise<void> {
     try {
-      Logger.debug('处理事件', { 
+      Logger.debug('イベントを処理中', { 
         eventType: event.type,
         sourceType: event.source?.type,
         userId: event.source?.userId 
@@ -68,10 +68,10 @@ export class LineBotHandler {
           await this.handlePostbackEvent(event);
           break;
         default:
-          Logger.debug('未处理的事件类型', { eventType: event.type });
+          Logger.debug('未処理のイベントタイプ', { eventType: event.type });
       }
     } catch (error) {
-      Logger.error('处理事件时发生错误', { 
+      Logger.error('イベント処理中にエラーが発生しました', { 
         error,
         eventType: event.type,
         userId: event.source?.userId
@@ -80,18 +80,18 @@ export class LineBotHandler {
   }
 
   /**
-   * 处理消息事件
+   * メッセージイベントを処理
    */
   private async handleMessageEvent(event: LineWebhookEvent): Promise<void> {
     if (!event.message || !event.replyToken) {
-      Logger.warn('消息事件缺少必要字段');
+      Logger.warn('メッセージイベントに必要なフィールドがありません');
       return;
     }
 
     const userId = event.source.userId;
     const message = event.message;
     
-    Logger.info('处理用户消息', { 
+    Logger.info('ユーザーメッセージを処理中', { 
       userId,
       messageType: message.type,
       messageText: message.text?.substring(0, 50) + '...'
@@ -100,7 +100,7 @@ export class LineBotHandler {
     try {
       let response: string;
 
-      // 根据消息类型处理
+      // メッセージタイプに応じて処理
       switch (message.type) {
         case 'text':
           response = await this.processLegalQuery(message.text || '', userId);
@@ -109,11 +109,11 @@ export class LineBotHandler {
           response = '申し訳ありませんが、テキストメッセージのみ対応しています。';
       }
 
-      // 发送回复
+      // 返信を送信
       await this.replyMessage(event.replyToken, response);
       
     } catch (error) {
-      Logger.error('处理消息失败', { error, userId });
+      Logger.error('メッセージ処理に失敗しました', { error, userId });
       await this.replyMessage(
         event.replyToken, 
         '申し訳ありませんが、現在サービスに問題が発生しています。しばらくしてから再度お試しください。'

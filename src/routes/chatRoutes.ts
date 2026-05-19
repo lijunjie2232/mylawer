@@ -10,13 +10,13 @@ const chatService = ChatService.getInstance();
  * @openapi
  * /api/chat/sessions:
  *   get:
- *     summary: 获取用户的所有会话
+ *     summary: ユーザーのすべてのセッションを取得
  *     tags: [Chat]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: 成功获取会话列表
+ *         description: セッションリスト取得成功
  */
 router.get('/sessions', authenticateToken, async (req: any, res: Response): Promise<void> => {
   try {
@@ -29,7 +29,7 @@ router.get('/sessions', authenticateToken, async (req: any, res: Response): Prom
     const sessions = await chatService.getUserSessions(userId);
     res.json({ success: true, sessions });
   } catch (error) {
-    Logger.error('获取会话失败', { error: (error as Error).message });
+    Logger.error('セッション取得失敗', { error: (error as Error).message });
     res.status(500).json({ success: false, message: (error as Error).message });
   }
 });
@@ -38,7 +38,7 @@ router.get('/sessions', authenticateToken, async (req: any, res: Response): Prom
  * @openapi
  * /api/chat/sessions:
  *   post:
- *     summary: 创建新会话
+ *     summary: 新しいセッションを作成
  *     tags: [Chat]
  *     security:
  *       - bearerAuth: []
@@ -56,7 +56,7 @@ router.post('/sessions', authenticateToken, async (req: any, res: Response): Pro
     const session = await chatService.createSession(userId, title);
     res.status(201).json({ success: true, session });
   } catch (error) {
-    Logger.error('创建会话失败', { error: (error as Error).message });
+    Logger.error('セッション作成失敗', { error: (error as Error).message });
     res.status(500).json({ success: false, message: (error as Error).message });
   }
 });
@@ -65,7 +65,7 @@ router.post('/sessions', authenticateToken, async (req: any, res: Response): Pro
  * @openapi
  * /api/chat/sessions/{sessionId}/messages:
  *   get:
- *     summary: 获取会话的消息历史
+ *     summary: セッションのメッセージ履歴を取得
  *     tags: [Chat]
  *     security:
  *       - bearerAuth: []
@@ -80,12 +80,12 @@ router.get('/sessions/:sessionId/messages', authenticateToken, async (req: any, 
       return;
     }
 
-    // TODO: 校验会话是否属于该用户 (已经在 service 层部分校验，但 getSessionMessages 还没校验 userId)
-    // 这里简单起见直接调用，生产环境建议在 service 层加强校验
+    // TODO: セッションがこのユーザーに属しているか検証（service レイヤーで部分的に検証済みですが、getSessionMessages は userId を検証していません）
+    // ここでは簡略化のため直接呼び出しますが、本番環境では service レイヤーで検証を強化することをお勧めします
     const messages = await chatService.getSessionMessages(sessionId);
     res.json({ success: true, messages });
   } catch (error) {
-    Logger.error('获取消息失败', { error: (error as Error).message });
+    Logger.error('メッセージ取得失敗', { error: (error as Error).message });
     res.status(500).json({ success: false, message: (error as Error).message });
   }
 });
@@ -94,7 +94,7 @@ router.get('/sessions/:sessionId/messages', authenticateToken, async (req: any, 
  * @openapi
  * /api/chat/sessions/{sessionId}:
  *   delete:
- *     summary: 删除会话
+ *     summary: セッションを削除
  *     tags: [Chat]
  *     security:
  *       - bearerAuth: []

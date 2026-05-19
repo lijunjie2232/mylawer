@@ -23,24 +23,24 @@ export class ChatService {
   }
 
   /**
-   * 创建新的聊天会话
+   * 新しいチャットセッションを作成
    */
   public async createSession(userId: string, title?: string) {
     try {
       return await this.prisma.chatSession.create({
         data: {
           userId,
-          title: title || '新会话',
+          title: title || '新しいセッション',
         },
       });
     } catch (error) {
-      Logger.error('创建会话失败', { error: (error as Error).message });
+      Logger.error('セッション作成に失敗しました', { error: (error as Error).message });
       throw error;
     }
   }
 
   /**
-   * 获取单个会话详情
+   * 単一セッションの詳細を取得
    */
   public async getSession(sessionId: string, userId: string) {
     try {
@@ -54,13 +54,13 @@ export class ChatService {
 
       return session;
     } catch (error) {
-      Logger.error('获取会话详情失败', { error: (error as Error).message });
+      Logger.error('セッション詳細の取得に失敗しました', { error: (error as Error).message });
       throw error;
     }
   }
 
   /**
-   * 获取用户的所有会话
+   * ユーザーのすべてのセッションを取得
    */
   public async getUserSessions(userId: string) {
     try {
@@ -69,13 +69,13 @@ export class ChatService {
         orderBy: { updatedAt: 'desc' },
       });
     } catch (error) {
-      Logger.error('获取用户会话失败', { error: (error as Error).message });
+      Logger.error('ユーザーセッションの取得に失敗しました', { error: (error as Error).message });
       throw error;
     }
   }
 
   /**
-   * 获取会话的消息历史
+   * セッションのメッセージ履歴を取得
    */
   public async getSessionMessages(sessionId: string) {
     try {
@@ -84,13 +84,13 @@ export class ChatService {
         orderBy: { createdAt: 'asc' },
       });
     } catch (error) {
-      Logger.error('获取会话消息失败', { error: (error as Error).message });
+      Logger.error('セッションメッセージの取得に失敗しました', { error: (error as Error).message });
       throw error;
     }
   }
 
   /**
-   * 添加消息到会话
+   * セッションにメッセージを追加
    */
   public async addMessage(sessionId: string, message: ChatMessage) {
     try {
@@ -102,7 +102,7 @@ export class ChatService {
         },
       });
 
-      // 更新会话的最后活跃时间
+      // セッションの最終アクティブ時間を更新
       await this.prisma.chatSession.update({
         where: { id: sessionId },
         data: { updatedAt: new Date() },
@@ -110,23 +110,23 @@ export class ChatService {
 
       return newMessage;
     } catch (error) {
-      Logger.error('添加消息失败', { error: (error as Error).message });
+      Logger.error('メッセージ追加に失敗しました', { error: (error as Error).message });
       throw error;
     }
   }
 
   /**
-   * 删除会话
+   * セッションを削除
    */
   public async deleteSession(sessionId: string, userId: string) {
     try {
-      // 确保会话属于该用户
+      // セッションがこのユーザーに属していることを確認
       const session = await this.prisma.chatSession.findUnique({
         where: { id: sessionId },
       });
 
       if (!session || session.userId !== userId) {
-        throw new Error('会话不存在或无权访问');
+        throw new Error('セッションが存在しないか、アクセス権限がありません');
       }
 
       await this.prisma.chatSession.delete({
@@ -135,13 +135,13 @@ export class ChatService {
 
       return true;
     } catch (error) {
-      Logger.error('删除会话失败', { error: (error as Error).message });
+      Logger.error('セッション削除に失敗しました', { error: (error as Error).message });
       throw error;
     }
   }
 
   /**
-   * 更新会话标题
+   * セッションタイトルを更新
    */
   public async updateSessionTitle(sessionId: string, userId: string, title: string) {
     try {
@@ -150,7 +150,7 @@ export class ChatService {
       });
 
       if (!session || session.userId !== userId) {
-        throw new Error('会话不存在或无权访问');
+        throw new Error('セッションが存在しないか、アクセス権限がありません');
       }
 
       return await this.prisma.chatSession.update({
@@ -158,7 +158,7 @@ export class ChatService {
         data: { title },
       });
     } catch (error) {
-      Logger.error('更新会话标题失败', { error: (error as Error).message });
+      Logger.error('セッションタイトルの更新に失敗しました', { error: (error as Error).message });
       throw error;
     }
   }

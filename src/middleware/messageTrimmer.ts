@@ -121,7 +121,7 @@ export class MessageTrimmer {
     }
     
     // キーワードスコア
-    const importantKeywords = ['重要', '关键', '必須', '重要性', '核心', '主要'];
+    const importantKeywords = ['重要', '必須', '重要性', '核心', '主要', 'キー'];
     const keywordScore = importantKeywords.some(keyword => 
       content.includes(keyword)
     ) ? 0.2 : 0;

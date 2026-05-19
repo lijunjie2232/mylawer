@@ -14,7 +14,7 @@ export interface ModelConfig {
   isEnabled: boolean;
 }
 
-// 模型健康检查结果
+// モデルヘルスチェック結果
 export interface ModelHealthStatus {
   name: string;
   isHealthy: boolean;
@@ -31,7 +31,7 @@ export class ModelManager {
   private initializationPromise: Promise<void> | null = null;
 
   private constructor() {
-    // 延迟初始化，通过 async initialize() 方法
+    // 遅延初期化、async initialize() メソッドを通じて
   }
 
   public static getInstance(): ModelManager {
@@ -109,7 +109,7 @@ export class ModelManager {
           apiKey: config.llm.apiKey || undefined,
           maxTokens: config.llm.maxTokens,
           temperature: config.llm.temperature,
-          description: `由 ${model.owned_by || config.llm.modelProvider} 提供`,
+          description: `${model.owned_by || config.llm.modelProvider} によって提供`,
           isEnabled: true
         };
 

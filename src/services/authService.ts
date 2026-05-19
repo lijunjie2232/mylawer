@@ -22,7 +22,7 @@ export class AuthService {
   }
 
   /**
-   * 获取单例实例
+   * シングルトンインスタンスを取得
    */
   public static getInstance(): AuthService {
     if (!AuthService.instance) {
@@ -32,7 +32,7 @@ export class AuthService {
   }
 
   /**
-   * 密码哈希
+   * パスワードをハッシュ化
    */
   public async hashPassword(password: string): Promise<string> {
     const saltRounds = 10;
@@ -40,14 +40,14 @@ export class AuthService {
   }
 
   /**
-   * 验证密码
+   * パスワードを検証
    */
   public async verifyPassword(password: string, hash: string): Promise<boolean> {
     return bcrypt.compare(password, hash);
   }
 
   /**
-   * 生成 JWT Token
+   * JWT トークンを生成
    */
   public generateToken(payload: Omit<JWTPayload, 'iat' | 'exp'>): string {
     const tokenPayload: JWTPayload = {
@@ -62,7 +62,7 @@ export class AuthService {
   }
 
   /**
-   * 验证 JWT Token
+   * JWT トークンを検証
    */
   public verifyToken(token: string): JWTPayload {
     try {
@@ -75,7 +75,7 @@ export class AuthService {
   }
 
   /**
-   * 通过邮箱查找用户
+   * メールアドレスでユーザーを検索
    */
   public async findUserByEmail(email: string): Promise<UserWithPasswordHash | null> {
     try {
@@ -178,24 +178,24 @@ export class AuthService {
         return null;
       }
 
-      // 检查用户是否激活
+      // ユーザーがアクティブか確認
       if (!user.isActive) {
-        Logger.warn('用户已被禁用', { email: credentials.email });
+        Logger.warn('ユーザーが無効化されています', { email: credentials.email });
         return null;
       }
 
-      // 验证密码
+      // パスワードを検証
       const isValidPassword = await this.verifyPassword(
         credentials.password,
         user.passwordHash
       );
 
       if (!isValidPassword) {
-        Logger.warn('密码错误', { email: credentials.email });
+        Logger.warn('パスワードが間違っています', { email: credentials.email });
         return null;
       }
 
-      // 更新最后登录时间
+      // 最終ログイン時間を更新
       await this.prisma.user.update({
         where: { id: user.id },
         data: {
@@ -203,7 +203,7 @@ export class AuthService {
         },
       });
 
-      // 生成 Token
+      // トークンを生成
       const token = this.generateToken({
         userId: user.id,
         email: user.email,
@@ -226,13 +226,13 @@ export class AuthService {
         user: userData,
       };
     } catch (error) {
-      Logger.error('登录失败', { error: (error as Error).message });
+      Logger.error('ログインに失敗しました', { error: (error as Error).message });
       return null;
     }
   }
 
   /**
-   * 获取或创建默认角色
+   * デフォルトロールを取得または作成
    */
   public async getOrCreateDefaultRoles(): Promise<{
     userRole: any;
@@ -246,11 +246,11 @@ export class AuthService {
       userRole = await this.prisma.role.create({
         data: {
           name: 'USER',
-          description: '普通用户',
+          description: '一般ユーザー',
           permissions: ['read:own_profile', 'update:own_profile'],
         },
       });
-      Logger.info('创建 USER 角色成功');
+      Logger.info('USER ロールの作成に成功しました');
     }
 
     let adminRole = await this.prisma.role.findUnique({
@@ -261,7 +261,7 @@ export class AuthService {
       adminRole = await this.prisma.role.create({
         data: {
           name: 'ADMIN',
-          description: '管理员',
+          description: '管理者',
           permissions: [
             'read:all_users',
             'update:all_users',
@@ -271,20 +271,20 @@ export class AuthService {
           ],
         },
       });
-      Logger.info('创建 ADMIN 角色成功');
+      Logger.info('ADMIN ロールの作成に成功しました');
     }
 
     return { userRole, adminRole };
   }
 
   /**
-   * 初始化默认管理员账户
+   * デフォルト管理者アカウントを初期化
    */
   public async initializeDefaultAdmin(): Promise<void> {
     try {
       const { adminRole } = await this.getOrCreateDefaultRoles();
 
-      // 检查是否已存在管理员
+      // 管理者が既に存在するか確認
       const existingAdmin = await this.prisma.user.findFirst({
         where: {
           email: config.auth.defaultAdminEmail,
@@ -295,11 +295,11 @@ export class AuthService {
       });
 
       if (existingAdmin) {
-        Logger.info('默认管理员账户已存在', { email: config.auth.defaultAdminEmail });
+        Logger.info('デフォルト管理者アカウントは既に存在します', { email: config.auth.defaultAdminEmail });
         return;
       }
 
-      // 创建默认管理员
+      // デフォルト管理者を作成
       await this.createUser({
         email: config.auth.defaultAdminEmail,
         password: config.auth.defaultAdminPassword,
@@ -307,29 +307,29 @@ export class AuthService {
         roleId: adminRole.id,
       });
 
-      Logger.info('默认管理员账户创建成功', { 
+      Logger.info('デフォルト管理者アカウントの作成に成功しました', { 
         email: config.auth.defaultAdminEmail,
         role: 'ADMIN' 
       });
     } catch (error) {
-      Logger.error('初始化默认管理员失败', { error: (error as Error).message });
+      Logger.error('デフォルト管理者の初期化に失敗しました', { error: (error as Error).message });
       throw error;
     }
   }
 
   /**
-   * 删除用户账户及其所有相关数据
+   * ユーザーアカウントとその関連データをすべて削除
    */
   public async deleteAccount(userId: string): Promise<boolean> {
     try {
-      // Prisma schema 中设置了 onDelete: Cascade，所以删除用户会同时删除其会话和消息
+      // Prisma スキーマで onDelete: Cascade が設定されているため、ユーザーを削除するとそのセッションとメッセージも同時に削除されます
       await this.prisma.user.delete({
         where: { id: userId },
       });
-      Logger.info('用户账户已删除', { userId });
+      Logger.info('ユーザーアカウントが削除されました', { userId });
       return true;
     } catch (error) {
-      Logger.error('删除账户失败', { userId, error: (error as Error).message });
+      Logger.error('アカウント削除に失敗しました', { userId, error: (error as Error).message });
       throw new Error(`Failed to delete account: ${(error as Error).message}`);
     }
   }

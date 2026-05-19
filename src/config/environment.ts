@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 // 環境変数を読み込む
 dotenv.config();
 
-// 环境变数検証スキーマ
+// 環境変数検証スキーマ
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.string().transform(Number).default(3000),
@@ -17,32 +17,32 @@ const envSchema = z.object({
   LLM_TEMPERATURE: z.string().transform(Number).default(0.7),
   LLM_API_KEY: z.string().min(1, 'LLM_API_KEY is required and cannot be empty'),
   
-  // Free Model 配置
+  // Free Model 設定
   USE_FREE_MODEL: z.string().transform(v => v === 'true').default('false'),
   FREE_MODEL_BASE_URL: z.string().default('https://openrouter.ai/api/v1'),
   DEFAULT_MODEL: z.string().optional(),
   
-  // 允许使用的模型列表（逗号分隔），留空表示允许所有模型
+  // 使用可能なモデルリスト（カンマ区切り）、空の場合はすべてのモデルを許可
   ALLOW_MODELS: z.string().optional(),
   
-  // 允许使用的MCP工具列表（逗号或分号分隔），留空表示允许所有工具
+  // 使用可能なMCPツールリスト（カンマまたはセミコロン区切り）、空の場合はすべてのツールを許可
   ALLOWED_MCP_TOOLS: z.string().optional(),
   
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
   
-  // LINE Bot 配置
+  // LINE Bot 設定
   LINE_CHANNEL_SECRET: z.string().optional(),
   LINE_ACCESS_TOKEN: z.string().optional(),
   
-  // 搜索 API 配置
+  // 検索 API 設定
   TAVILY_API_KEY: z.string().optional(),
   JINA_API_KEY: z.string().optional(),
   
-  // データベース配置
+  // データベース設定
   DATABASE_URL: z.string().url(),
   DB_TYPE: z.string().default('postgresql'),
   
-  // JWT & 認証配置
+  // JWT & 認証設定
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters'),
   JWT_EXPIRES_IN: z.coerce.number().default(86400), // 24 hours
   SESSION_TOKEN_EXPIRES_IN: z.coerce.number().default(604800), // 7 days

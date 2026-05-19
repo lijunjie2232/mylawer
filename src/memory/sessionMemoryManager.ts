@@ -87,7 +87,7 @@ export class SessionMemoryManager {
   }
 
   /**
-   * 更新会话上下文
+   * セッションコンテキストを更新
    */
   public updateContext(sessionId: string, context: Record<string, any>): void {
     const session = this.getSession(sessionId);
@@ -96,7 +96,7 @@ export class SessionMemoryManager {
   }
 
   /**
-   * 获取会话上下文
+   * セッションコンテキストを取得
    */
   public getContext(sessionId: string): Record<string, any> {
     const session = this.getSession(sessionId);
@@ -104,7 +104,7 @@ export class SessionMemoryManager {
   }
 
   /**
-   * 获取会话统计信息
+   * セッション統計情報を取得
    */
   public getSessionStats(): SessionStats {
     const now = new Date();
@@ -126,7 +126,7 @@ export class SessionMemoryManager {
   }
 
   /**
-   * 启动定时清理任务
+   * 定期的なクリーンアップタスクを開始
    */
   private startCleanupTimer(): void {
     setInterval(() => {
@@ -135,7 +135,7 @@ export class SessionMemoryManager {
   }
 
   /**
-   * 清理过期会话
+   * 期限切れのセッションをクリーンアップ
    */
   private cleanupExpiredSessions(): void {
     const now = new Date();
@@ -155,7 +155,7 @@ export class SessionMemoryManager {
 }
 
 /**
- * 会话数据接口
+ * セッションデータインターフェース
  */
 export interface SessionData {
   sessionId: string;
