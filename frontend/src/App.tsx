@@ -436,7 +436,7 @@ const App: React.FC = () => {
                       modelUsed: data.modelUsed
                     })
                     setStatus('')
-                    // 如果后端返回了新的 sessionId（例如从匿名转为已登录），更新它
+                    // バックエンドが新しい sessionId を返した場合（例えば匿名からログイン済みに変更）、それを更新
                     if (data.sessionId && data.sessionId !== sessionId) {
                       setSessionId(data.sessionId)
                       localStorage.setItem('sessionId', data.sessionId)
