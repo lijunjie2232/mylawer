@@ -1,0 +1,67 @@
+---
+title: Welcome to Law Assistant
+description: An intelligent legal consulting assistant powered by LangChain and MCP.
+lastUpdated: 2026-05-21
+hero:
+  tagline: Intelligent Legal Intelligence at your fingertips.
+  image:
+    file: ../../../assets/houston.svg
+  actions:
+    - text: Get Started
+      link: mylawer/getting-started/quickstart/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/lijunjie2232/mylawer
+      icon: external
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Why Law Assistant?
+
+**Law Assistant** is a professional-grade legal consulting platform built on top of **LangChain** and the **Model Context Protocol (MCP)**. It is designed to provide accurate, context-aware answers to complex legal questions by leveraging specialized search engines and state-of-the-art LLMs.
+
+<CardGrid stagger>
+	<Card title="MCP Tool Integration" icon="setting">
+		Native support for **Model Context Protocol**. Seamlessly connects to `legal-mcp` for Japanese laws and `webmcp` for real-time web context.
+	</Card>
+	<Card title="Legal Intelligence Engine" icon="magnifier">
+		Built-in deep search capabilities for legal documents using Elasticsearch and advanced retrieval patterns.
+	</Card>
+	<Card title="Unified LLM API" icon="random">
+		Switch between **OpenAI**, **Anthropic**, **ollama** or any provider like **OpenRouter**, with a single configuration change.
+	</Card>
+	<Card title="Multi-Interface" icon="laptop">
+		Access via a modern **React Web UI**, a powerful **CLI**, or integrated directly into **LINE Bot**.
+	</Card>
+</CardGrid>
+
+## Next Steps
+
+<CardGrid>
+	<a href="./getting-started/quickstart/" style="text-decoration: none;">
+		<Card title="🚀 Quick Start" icon="rocket">
+			Run the full stack in minutes using Docker Compose.
+		</Card>
+	</a>
+	<a href="./getting-started/installation/" style="text-decoration: none;">
+		<Card title="📦 Installation" icon="add-document">
+			Step-by-step guide for local development and manual setup.
+		</Card>
+	</a>
+	<a href="./concepts/overview/" style="text-decoration: none;">
+		<Card title="🧠 Architecture" icon="open-book">
+			Understand how LangChain, MCP servers, and Agents work together.
+		</Card>
+	</a>
+	<a href="./reference/api/" style="text-decoration: none;">
+		<Card title="💻 API Reference" icon="code">
+			Explore the REST API endpoints and integration options.
+		</Card>
+	</a>
+</CardGrid>
+
+---
+
+⚠️ **Important Disclaimer**: This assistant provides legal information for reference only. It is NOT a substitute for professional legal advice from a qualified attorney. Always consult with a licensed professional for critical legal matters.
