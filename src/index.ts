@@ -5,6 +5,7 @@ import { Logger } from './utils/logger.js';
 import { config } from './config/environment.js';
 import { Server } from './server.js';
 import * as readline from 'readline';
+import { cleanupMCPServers } from './mcp/mcpInitializer.js';
 
 class LawAssistant {
   private legalAgent: LegalAgent;
@@ -12,7 +13,7 @@ class LawAssistant {
   constructor() {
     this.legalAgent = new LegalAgent();
     Logger.info('法的アシスタントが起動しました', {
-      version: '1.0.0',
+      version: '2.0.0',
       model: config.llm.modelName,
       provider: config.llm.modelProvider,
       environment: config.app.env
@@ -98,8 +99,24 @@ class LawAssistant {
 
 // メイン関数
 async function main() {
+  const args = process.argv.slice(2);
+  
   // 実行モードの確認
-  const isServerMode = process.argv.includes('--server') || process.argv.includes('-s');
+  const isServerMode = args.includes('--server') || args.includes('-s');
+  const isHelpMode = args.includes('--help') || args.includes('-h');
+
+  if (isHelpMode) {
+    console.log('使用法:');
+    console.log('  node dist/index.js [オプション] [クエリ]');
+    console.log('');
+    console.log('オプション:');
+    console.log('  --server, -s    サーバーモードで起動');
+    console.log('  --help, -h      このヘルプを表示');
+    console.log('');
+    console.log('クエリ:');
+    console.log('  引数として法律問題を直接入力可能');
+    return;
+  }
 
   if (isServerMode) {
     // サーバーモード
@@ -111,13 +128,22 @@ async function main() {
     const assistant = new LawAssistant();
 
     // コマンドライン引数から呼び出された場合
-    if (process.argv.length > 2) {
-      const question = process.argv.slice(2).join(' ');
+    if (args.length > 0) {
+      // 未知のフラグ（-で始まる引数）をチェック
+      const unknownFlag = args.find(arg => arg.startsWith('-'));
+      if (unknownFlag) {
+        console.error(`エラー: 未知のフラグ '${unknownFlag}'`);
+        console.log('使用可能なオプションについては --help を参照してください。');
+        process.exit(1);
+      }
+
+      const question = args.join(' ');
       try {
         const answer = await assistant.askLegalQuestion(question);
         console.log(answer);
       } catch (error) {
         console.error('エラー:', error);
+        await cleanupMCPServers().catch(() => {});
         process.exit(1);
       }
     } else {
@@ -133,7 +159,8 @@ process.on('unhandledRejection', (reason, promise) => {
     reason: reason ? (reason as Error).message || reason : 'unknown',
     stack: (reason as Error)?.stack
   });
-  process.exit(1);
+  // クリーンアップを試みる
+  cleanupMCPServers().finally(() => process.exit(1));
 });
 
 process.on('uncaughtException', (error) => {
@@ -141,7 +168,8 @@ process.on('uncaughtException', (error) => {
     error: error ? (error as Error).message || error : 'unknown',
     stack: (error as Error)?.stack
   });
-  process.exit(1);
+  // クリーンアップを試みる
+  cleanupMCPServers().finally(() => process.exit(1));
 });
 
 // アプリケーションを起動
@@ -152,7 +180,7 @@ const isMainModule = process.argv[1] && (
 );
 
 if (isMainModule) {
-  main().catch((error: any) => {
+  main().catch(async (error: any) => {
     // 详细的错误处理
     console.error('=== 启动错误详情 ===');
     console.error('Error value:', error);
@@ -171,8 +199,25 @@ if (isMainModule) {
       errorErrno: (error as any)?.errno
     });
     
+    await cleanupMCPServers().catch(() => {});
     process.exit(1);
   });
 }
+
+// クリーンアップ処理
+async function shutdown(signal: string) {
+  Logger.info(`${signal} 受信、シャットダウンを開始します...`);
+  try {
+    await cleanupMCPServers();
+    Logger.info('MCP サーバーのクリーンアップが完了しました');
+  } catch (error) {
+    Logger.error('シャットダウン中のクリーンアップに失敗しました', { error: (error as Error).message });
+  }
+  process.exit(0);
+}
+
+// シグナルハンドラーの登録
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 export { LawAssistant };
