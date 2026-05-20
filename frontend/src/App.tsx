@@ -541,19 +541,32 @@ const App: React.FC = () => {
               </Typography>
             </Box>
 
-            <FormControl size="small" sx={{ minWidth: 200, mr: 2 }}>
-              <InputLabel shrink>AI モデル</InputLabel>
+            <FormControl size="small" sx={{ minWidth: 200, mr: 2}}>
+              <InputLabel shrink sx={{ color: 'white' }}>AI モデル</InputLabel>
               <Select
                 value={selectedModel}
                 label="AI モデル"
                 onChange={(e) => setSelectedModel(e.target.value)}
                 disabled={isLoading || isModelsLoading}
                 sx={{
+                  color: 'white',
                   '& .MuiOutlinedInput-notchedOutline': {
                     borderColor: 'rgba(255,255,255,0.5)',
                   },
                   '&:hover .MuiOutlinedInput-notchedOutline': {
                     borderColor: 'rgba(255,255,255,0.8)',
+                  },
+                  '& .MuiSelect-select': {
+                    color: 'white',
+                  },
+                }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      '& .MuiMenuItem-root': {
+                        color: 'black',
+                      },
+                    },
                   },
                 }}
               >
@@ -849,9 +862,9 @@ const App: React.FC = () => {
                   opacity: 0.5,
                   pointerEvents: 'none',
                 }}
-              >
-                {Math.round(inputHeight)}px
-              </Typography>
+              />
+                {/* {Math.round(inputHeight)}px
+              </Typography> */}
 
               <Box sx={{ display: 'flex', gap: 2, alignItems: 'stretch', flexGrow: 1, minHeight: 0 }}>
                 <TextField
@@ -891,9 +904,11 @@ const App: React.FC = () => {
                   color="primary"
                   disabled={!inputValue.trim() || isLoading}
                   sx={{
-                    minWidth: 100,
+                    minWidth: 64,
                     alignSelf: 'flex-end',
-                    height: '56px',
+                    minHeight: '28px',
+                    height: '100%',
+                    maxHeight: '45px',
                   }}
                 >
                   {isLoading ? '送信中...' : <SendIcon />}
