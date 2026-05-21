@@ -1,0 +1,13 @@
+packages:
+  - .
+  - frontend
+  - third/legal-mcp/js_legal
+  - third/webmcp
+
+onlyBuiltDependencies:
+  - '@prisma/engines'
+  - '@scarf/scarf'
+  - esbuild
+  - prisma
+  - puppeteer
+  - unrs-resolver
