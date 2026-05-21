@@ -1,0 +1,57 @@
+FROM postgres:18.4-trixie
+
+# mkdir /app
+RUN mkdir /app
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get install -y postgresql-18-cron supervisor curl libatomic1 git
+
+# Install Node.js
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+    && apt install -y nodejs \
+    && npm install -g corepack \
+    && corepack enable pnpm \
+    && pnpm -v
+
+# COPY ./scripts/dump-las-202605191426.sql /docker-entrypoint-initdb.d/dump-las-202605191426.sql
+COPY ./scripts/tables.sql /docker-entrypoint-initdb.d/1-tables.sql
+COPY ./scripts/setup-cleanup-job.sql /docker-entrypoint-initdb.d/2-setup-cleanup-job.sql
+
+COPY ./frontend /app/frontend
+COPY ./prisma /app/prisma
+COPY ./src /app/src
+RUN mkdir -p third/legal-mcp/
+COPY ./third/legal-mcp/js_legal /app/third/legal-mcp/js_legal
+COPY ./third/webmcp /app/third/webmcp
+COPY ./.env.demo /app/.env
+COPY LICENSE /app/LICENSE
+COPY package.json /app/package.json
+COPY pnpm-lock.yaml /app/pnpm-lock.yaml
+COPY pnpm-workspace.yaml /app/pnpm-workspace.yaml
+COPY prisma.config.ts /app/prisma.config.ts
+COPY tsconfig.json /app/tsconfig.json
+
+RUN cd frontend \
+    && pnpm i \
+    && pnpm build \
+    && cd .. \
+    && pnpm i \
+    && pnpm db:generate \
+    && pnpm build
+
+COPY ./scripts/docker-entrypoint_hook.sh /usr/local/bin/docker-entrypoint.sh
+
+COPY ./third/legal-mcp/config.yaml /app/third/legal-mcp/config.yaml
+
+# supervisor
+COPY ./scripts/app.sh /app/app.sh
+COPY ./scripts/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+RUN apt-get clean && rm -rf /var/lib/apt/lists/* && rm -rf /tmp/* /var/tmp/* && pnpm store prune
+
+EXPOSE 3000
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

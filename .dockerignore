@@ -36,7 +36,7 @@ coverage
 # Environment variables
 .env
 .env.*
-!.env.example
+!.env.docker
 
 # Docker
 Dockerfile
@@ -87,3 +87,7 @@ deploy-gh-pages.sh
 openrouter_free_model.py
 postgresql-dev.yml
 types
+
+# node modules under any dir
+node_modules/
+**/node_modules/
