@@ -62,7 +62,7 @@ export class Server {
 
     // CORS 設定
     if (config.app.env === 'development') {
-      this.app.use(cors());
+      this.app.use(cors({ origin: '*' }));
     }
 
     // JSON 解析ミドルウェア
