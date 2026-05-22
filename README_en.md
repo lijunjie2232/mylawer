@@ -19,11 +19,12 @@ An intelligent legal consulting assistant powered by LangChain and the Model Con
 ## 🚀 Quick Start (Docker)
 
 The fastest way to get started is using Docker Compose.
-
 ```bash
 git clone https://github.com/lijunjie2232/mylawer.git
 cd mylawer
+git submodule update --init --recursive
 cp .env.example .env
+```
 # Edit .env and set your LLM_API_KEY
 docker-compose -f docker-compose-demo.yaml up -d --build
 ```
