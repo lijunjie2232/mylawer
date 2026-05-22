@@ -27,6 +27,10 @@ RUN cd frontend \
     && pnpm i \
     && pnpm build \
     && cd .. \
+    && cd third/legal-mcp/js_legal \
+    && pnpm install \
+    && pnpm build \
+    && cd ../../.. \
     && pnpm i \
     && pnpm db:generate \
     && pnpm build
@@ -34,5 +38,3 @@ RUN cd frontend \
 RUN apt-get clean && rm -rf /var/lib/apt/lists/* && rm -rf /tmp/* /var/tmp/* && pnpm store prune
 
 EXPOSE 3000
-
-CMD ["pnpm", "db:migrate:deploy", "&&", "pnpm", "start:server"]

@@ -17,6 +17,7 @@ services:
     ports:
       - "3000:3000" # change with .env.prod
     volumes:
+      - ./third/legal-mcp/config.yaml:/app/third/legal-mcp/config.yaml
       - .env.prod:/app/.env
     logging:
       driver: "json-file"
@@ -27,6 +28,8 @@ services:
       - sql
     networks:
       - las-net
+    # CMD ["pnpm", "db:migrate:deploy", "&&", "pnpm", "start:server"]
+    command: "sh -c 'pnpm db:migrate:deploy && pnpm start:server'"
   
   sql:
     image: postgres:18.4-trixie

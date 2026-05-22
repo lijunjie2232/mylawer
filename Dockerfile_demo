@@ -34,23 +34,38 @@ COPY pnpm-workspace.yaml /app/pnpm-workspace.yaml
 COPY prisma.config.ts /app/prisma.config.ts
 COPY tsconfig.json /app/tsconfig.json
 
+RUN cp /app/scripts/docker-entrypoint_hook.sh /usr/local/bin/docker-entrypoint.sh
+
+# no-cache after new commit
+ARG CACHEBUST=-1
+RUN echo building for commit "$CACHEBUST"
+# Clone the repository
+RUN git clone https://github.com/lijunjie2232/mylawer.git /app \
+    && cd /app \
+    && git config --global url."https://github.com/".insteadOf "git@github.com:" \
+    && git submodule update --init --recursive
+
+COPY ./third/legal-mcp/config.yaml /app/third/legal-mcp/config.yaml
+
 RUN cd frontend \
     && pnpm i \
     && pnpm build \
     && cd .. \
+    && cd third/legal-mcp/js_legal \
+    && pnpm install \
+    && pnpm build \
+    && cd ../../.. \
     && pnpm i \
     && pnpm db:generate \
     && pnpm build
 
-COPY ./scripts/docker-entrypoint_hook.sh /usr/local/bin/docker-entrypoint.sh
-
-COPY ./third/legal-mcp/config.yaml /app/third/legal-mcp/config.yaml
+RUN pnpm store prune
 
 # supervisor
 COPY ./scripts/app.sh /app/app.sh
 COPY ./scripts/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-RUN apt-get clean && rm -rf /var/lib/apt/lists/* && rm -rf /tmp/* /var/tmp/* && pnpm store prune
+RUN apt-get clean && rm -rf /var/lib/apt/lists/* && rm -rf /tmp/* /var/tmp/*
 
 EXPOSE 3000
 
