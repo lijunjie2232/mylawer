@@ -3,6 +3,10 @@
 
 An intelligent legal consulting assistant powered by LangChain and the Model Context Protocol (MCP). Specialized in answering Japanese legal questions and providing professional guidance.
 
+## 🚀 Live Demo
+
+**[🌐 Try the Online Demo](https://l2533584225-las.hf.space)**
+
 ## 🌟 Key Features
 
 - 🤖 **Intelligent Q&A**: Advanced legal reasoning using state-of-the-art LLMs (GPT-4o, Claude 3.5 Sonnet, etc.).
