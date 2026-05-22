@@ -5,15 +5,18 @@ lastUpdated: 2026-05-21
 hero:
   tagline: 指先ひとつでインテリジェントな法律知識を。
   image:
-    file: ../../../assets/houston.webp
+    file: ../../../assets/houston.svg
   actions:
-    - text: はじめる
-      link: /ja/getting-started/quickstart/
-      icon: right-arrow
-      variant: primary
-    - text: GitHub で表示
-      link: https://github.com/lijunjie2232/mylawer
+    - text: デモを試す
+      link: https://l2533584225-las.hf.space
       icon: external
+      variant: primary
+    - text: はじめる
+      link: /mylawer/ja/getting-started/quickstart/
+      icon: right-arrow
+    - text: GitHub
+      link: https://github.com/lijunjie2232/mylawer
+      icon: github
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
@@ -40,22 +43,22 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 ## 次のステップ
 
 <CardGrid>
-	<a href="/ja/getting-started/quickstart/" style="text-decoration: none;">
+	<a href="./getting-started/quickstart/" style="text-decoration: none;">
 		<Card title="🚀 クイックスタート" icon="rocket">
 			Docker Compose を使用して、数分でフルスタックを起動。
 		</Card>
 	</a>
-	<a href="/ja/getting-started/installation/" style="text-decoration: none;">
+	<a href="./getting-started/installation/" style="text-decoration: none;">
 		<Card title="📦 インストール" icon="add-document">
 			ローカル開発と手動セットアップのためのステップバイステップガイド。
 		</Card>
 	</a>
-	<a href="/ja/concepts/overview/" style="text-decoration: none;">
+	<a href="./concepts/overview/" style="text-decoration: none;">
 		<Card title="🧠 アーキテクチャ" icon="open-book">
 			LangChain、MCP サーバー、およびエージェントがどのように連携するかを理解する。
 		</Card>
 	</a>
-	<a href="/ja/reference/api/" style="text-decoration: none;">
+	<a href="./reference/api/" style="text-decoration: none;">
 		<Card title="💻 API リファレンス" icon="code">
 			REST API エンドポイントと統合オプションの詳細。
 		</Card>
