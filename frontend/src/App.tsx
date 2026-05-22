@@ -171,7 +171,7 @@ const App: React.FC = () => {
     palette: {
       mode: isDarkMode ? 'dark' : 'light',
       primary: {
-        main: '#1976d2',
+        main: '#1976d2ff',
         light: '#42a5f5',
         dark: '#1565c0',
       },
@@ -508,15 +508,17 @@ const App: React.FC = () => {
     '"マッチ売りの少女"という物語の少女には業務横領を犯しましたのか？',
 
     // 民法関連
+    '2026年4月から新しい自転車法律は施行されるそう、それについて教えてください。',
     '横浜市では婚姻届を提出する際に必要な書類と手続きを教えてください。',
     '隣人との騒音トラブルに対する法的措置は何がありますか？',
     '借金返済が困難になった場合の法的対応を教えてください。',
+
   ]
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
         {/* ヘッダー */}
         <AppBar position="sticky" color="primary" elevation={1}>
           <Toolbar>
@@ -563,8 +565,15 @@ const App: React.FC = () => {
                 MenuProps={{
                   PaperProps: {
                     sx: {
+                      bgcolor: 'background.paper',
                       '& .MuiMenuItem-root': {
-                        color: 'black',
+                        color: 'text.primary',
+                        '&:hover': {
+                          bgcolor: 'action.hover',
+                        },
+                      },
+                      '& .MuiSelect-icon': {
+                        color: 'text.primary',
                       },
                     },
                   },
@@ -634,13 +643,14 @@ const App: React.FC = () => {
         />
 
         {/* メインコンテンツ */}
-        <Container maxWidth="lg" sx={{ flexGrow: 1, py: 3 }} ref={containerRef}>
+        <Container maxWidth="lg" sx={{ flexGrow: 1, py: 3, display: 'flex', flexDirection: 'column', minHeight: 0 }} ref={containerRef}>
           <Paper
             elevation={3}
             sx={{
               display: 'flex',
               flexDirection: 'column',
-              height: 'calc(100vh - 140px)',
+              height: '100%',
+              minHeight: 0,
               overflow: 'hidden',
             }}
           >
@@ -650,6 +660,7 @@ const App: React.FC = () => {
                 flexGrow: 1,
                 overflow: 'auto',
                 p: 2,
+                pt: 3,
                 minHeight: 0, // Important for flex child scrolling
               }}
             >
@@ -660,7 +671,7 @@ const App: React.FC = () => {
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    height: '100%',
+                    minHeight: '100%',
                     textAlign: 'center',
                   }}
                 >
