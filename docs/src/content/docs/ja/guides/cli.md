@@ -66,5 +66,5 @@ DOTENV_CONFIG_PATH=.env.cli pnpm cli
 
 ## 次のステップ
 
-- [LINE Bot 連携](/ja/guides/line-bot/) について学ぶ。
-- [完全な環境変数リファレンス](/ja/config/environment/) を確認する。
+- [LINE Bot 連携](../../guides/line-bot/) について学ぶ。
+- [完全な環境変数リファレンス](../../config/environment/) を確認する。

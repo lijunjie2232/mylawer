@@ -63,5 +63,5 @@ docker logs -f las
 
 ## 次のステップ
 
-- [セキュリティと認証チェックリスト](/ja/deployment/security/) を確認する。
-- [API リファレンス](/ja/reference/api/) を探索する。
+- [セキュリティと認証チェックリスト](../../deployment/security/) を確認する。
+- [API リファレンス](../../reference/api/) を探索する。

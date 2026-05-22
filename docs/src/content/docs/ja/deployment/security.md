@@ -55,5 +55,5 @@ LINE Bot 統合では、LINE からのすべてのリクエストが `LINE_CHANN
 
 ## 次のステップ
 
-- [API リファレンス](/ja/reference/api/) を探索する。
-- [LLM プロバイダー](/ja/config/llm/) について学ぶ。
+- [API リファレンス](../../reference/api/) を探索する。
+- [LLM プロバイダー](../../config/llm/) について学ぶ。

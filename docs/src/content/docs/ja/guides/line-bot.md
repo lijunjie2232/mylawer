@@ -57,5 +57,5 @@ LINE Developers コンソールの「Messaging API」タブで：
 
 ## 次のステップ
 
-- [Docker デプロイ](/ja/deployment/docker/) について学ぶ。
-- [MCP ツールシステム](/ja/concepts/mcp-tools/) を確認する。
+- [Docker デプロイ](../../deployment/docker/) について学ぶ。
+- [MCP ツールシステム](../../concepts/mcp-tools/) を確認する。

@@ -98,5 +98,5 @@ pnpm start:server
 
 ## 次のステップ
 
-- [LLM プロバイダー](/ja/config/llm/) を設定する。
-- [システム概要](/ja/concepts/overview/) について学ぶ。
+- [LLM プロバイダー](../../config/llm/) を設定する。
+- [システム概要](../../concepts/overview/) について学ぶ。

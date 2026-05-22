@@ -52,6 +52,6 @@ docker-compose -f docker-compose-demo.yaml up -d --build
 
 ## 次のステップ
 
-- [LLM プロバイダーの設定](/ja/config/llm/) について学ぶ。
-- [ウェブ UI の機能](/ja/guides/web-ui/) を探索する。
-- ローカルで開発したい場合は [手動インストールガイド](/ja/getting-started/installation/) を確認する。
+- [LLM プロバイダーの設定](../../config/llm/) について学ぶ。
+- [ウェブ UI の機能](../../guides/web-ui/) を探索する。
+- ローカルで開発したい場合は [手動インストールガイド](../../getting-started/installation/) を確認する。
