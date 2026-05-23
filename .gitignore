@@ -151,11 +151,12 @@ node_modules/
 tests/
 examples/
 
-/prisma/migrations/
-
 .vscode/
 
 browser/
+
+*.db
+*.db-journal
 
 # pnpm
 .pnpm-store
