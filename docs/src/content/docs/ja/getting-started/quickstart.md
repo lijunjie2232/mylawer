@@ -17,6 +17,7 @@ description: Docker を使用して数分で法律アシスタントを起動。
 ```bash
 git clone https://github.com/lijunjie2232/mylawer.git
 cd mylawer
+git submodule update --init --recursive
 cp .env.example .env
 ```
 

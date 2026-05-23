@@ -17,6 +17,7 @@ The fastest way to experience Law Assistant is using our pre-configured Docker D
 ```bash
 git clone https://github.com/lijunjie2232/mylawer.git
 cd mylawer
+git submodule update --init --recursive
 cp .env.example .env
 ```
 

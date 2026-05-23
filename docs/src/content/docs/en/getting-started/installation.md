@@ -19,6 +19,7 @@ This guide covers the manual installation of Law Assistant on your local machine
 ```bash
 git clone https://github.com/lijunjie2232/mylawer.git
 cd mylawer
+git submodule update --init --recursive
 ```
 
 ### 2. Install Dependencies
