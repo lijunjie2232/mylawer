@@ -1,6 +1,6 @@
 [submodule "third/legal-mcp"]
 	path = third/legal-mcp
-	url = git@github.com:lijunjie2232/legal-mcp.git
+	url = https://github.com/lijunjie2232/legal-mcp.git
 [submodule "third/webmcp"]
 	path = third/webmcp
-	url = git@github.com:lijunjie2232/webmcp.git
+	url = https://github.com/lijunjie2232/webmcp.git
