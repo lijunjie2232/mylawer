@@ -7,82 +7,42 @@ version: '3.8'
 services:
   # Main Application Service
   app:
-    build: ./Dockerfile_demo
-    container_name: las
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: las-app
     restart: unless-stopped
     ports:
-      # - "15432:5432"
-      - "3000:3000"
-    environment:
-      # ============================================
-      # Unified LLM Configuration System
-      # ============================================
-      # Model provider selection (openai | anthropic | ollama | ...)
-      LLM_MODEL_PROVIDER: openai
-      
-      # Unified model configuration
-      LLM_BASE_URL: "<your_llm_base_url_here>"
-      LLM_MAX_TOKENS: "<your_llm_max_tokens_here>"
-      LLM_TEMPERATURE: 0.3
-      
-      # Unified API key (shared by all providers)
-      LLM_API_KEY: "<your_api_key_here>"
-      
-      USE_FREE_MODEL: false
-      FREE_MODEL_BASE_URL: https://openrouter.ai/api/v1
-      DEFAULT_MODEL: nvidia/nemotron-3-nano-30b-a3b:free
-      
-      # ============================================
-      # Application Configuration
-      # ============================================
-      NODE_ENV: production
-      PORT: 3000
-      
-      # Log configuration
-      LOG_LEVEL: warn
-      
-      # ============================================
-      # LINE Bot Configuration
-      # ============================================
-      LINE_CHANNEL_SECRET: your_line_channel_secret_here
-      LINE_ACCESS_TOKEN: your_line_access_token_here
-      
-      ALLOWED_MCP_TOOLS: webmcp_deep_search,webmcp_parse_url,webmcp_get_available_engines,legal-mcp_search_laws
-      
-      # ============================================
-      # Database Configuration (PostgreSQL)
-      # ============================================
-      POSTGRES_USER: "<your_las_user>"
-      POSTGRES_PASSWORD: "<your_las_passwd>"
-      POSTGRES_DB: "<your_las_db>"
-      DATABASE_URL: postgresql://<your_las_user>:<your_las_passwd>@localhost:5432/<your_las_db>?schema=public
-      
-      # ============================================
-      # JWT & Authentication Configuration
-      # ============================================
-      JWT_SECRET: "<your_jwt_secret_here>"
-      JWT_EXPIRES_IN: 86400
-      SESSION_TOKEN_EXPIRES_IN: 604800
-      
-      # Default admin credentials (change after first login!)
-      DEFAULT_ADMIN_EMAIL: admin@example.com
-      DEFAULT_ADMIN_PASSWORD: Admin123!@#
-      
-      # docker script env
-      RUN_MIGRATIONS: true
-      INIT_ADMIN: true
-      
-    # volumes:
-    #   - postgres_data:/var/lib/postgresql
-    #   - postgres_logs:/var/log/postgres
+      - "3000:3000" # change with .env.prod
+    volumes:
+      - .env.prod:/app/.env
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+    depends_on:
+      - sql
+    networks:
+      - las-net
+  
+  sql:
+    image: postgres:18.4-trixie
+    container_name: las-sql
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - postgres_logs:/var/log/postgres
+    networks:
+      - las-net
 
-# volumes:
-#   postgres_data:
-#   postgres_logs:
+volumes:
+  postgres_data:
+  postgres_logs:
 
-
+networks:
+  las-net:

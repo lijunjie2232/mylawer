@@ -7,7 +7,9 @@ version: '3.8'
 services:
   # Main Application Service
   app:
-    build: ./Dockerfile_demo
+    build:
+      context: .
+      dockerfile: Dockerfile_demo
     container_name: las
     restart: unless-stopped
     ports:
@@ -18,19 +20,19 @@ services:
       # Unified LLM Configuration System
       # ============================================
       # Model provider selection (openai | anthropic | ollama | ...)
-      LLM_MODEL_PROVIDER: openai
+      LLM_MODEL_PROVIDER: ${LLM_MODEL_PROVIDER}
       
       # Unified model configuration
-      LLM_BASE_URL: "<your_llm_base_url_here>"
-      LLM_MAX_TOKENS: "<your_llm_max_tokens_here>"
-      LLM_TEMPERATURE: 0.3
+      LLM_BASE_URL: ${LLM_BASE_URL}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE}
       
       # Unified API key (shared by all providers)
-      LLM_API_KEY: "<your_api_key_here>"
+      LLM_API_KEY: ${LLM_API_KEY}
       
-      USE_FREE_MODEL: false
-      FREE_MODEL_BASE_URL: https://openrouter.ai/api/v1
-      DEFAULT_MODEL: nvidia/nemotron-3-nano-30b-a3b:free
+      USE_FREE_MODEL: ${USE_FREE_MODEL}
+      FREE_MODEL_BASE_URL: ${FREE_MODEL_BASE_URL}
+      DEFAULT_MODEL: ${DEFAULT_MODEL}
       
       # ============================================
       # Application Configuration
@@ -39,38 +41,38 @@ services:
       PORT: 3000
       
       # Log configuration
-      LOG_LEVEL: warn
+      LOG_LEVEL: ${LOG_LEVEL}
       
       # ============================================
       # LINE Bot Configuration
       # ============================================
-      LINE_CHANNEL_SECRET: your_line_channel_secret_here
-      LINE_ACCESS_TOKEN: your_line_access_token_here
+      LINE_CHANNEL_SECRET: ${LINE_CHANNEL_SECRET}
+      LINE_ACCESS_TOKEN: ${LINE_ACCESS_TOKEN}
       
       ALLOWED_MCP_TOOLS: webmcp_deep_search,webmcp_parse_url,webmcp_get_available_engines,legal-mcp_search_laws
       
       # ============================================
       # Database Configuration (PostgreSQL)
       # ============================================
-      POSTGRES_USER: "<your_las_user>"
-      POSTGRES_PASSWORD: "<your_las_passwd>"
-      POSTGRES_DB: "<your_las_db>"
-      DATABASE_URL: postgresql://<your_las_user>:<your_las_passwd>@localhost:5432/<your_las_db>?schema=public
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}?schema=public
       
       # ============================================
       # JWT & Authentication Configuration
       # ============================================
-      JWT_SECRET: "<your_jwt_secret_here>"
-      JWT_EXPIRES_IN: 86400
-      SESSION_TOKEN_EXPIRES_IN: 604800
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      SESSION_TOKEN_EXPIRES_IN: ${SESSION_TOKEN_EXPIRES_IN}
       
       # Default admin credentials (change after first login!)
-      DEFAULT_ADMIN_EMAIL: admin@example.com
-      DEFAULT_ADMIN_PASSWORD: Admin123!@#
+      DEFAULT_ADMIN_EMAIL: ${DEFAULT_ADMIN_EMAIL}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD}
       
       # docker script env
-      RUN_MIGRATIONS: true
-      INIT_ADMIN: true
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS}
+      INIT_ADMIN: ${INIT_ADMIN}
       
     # volumes:
     #   - postgres_data:/var/lib/postgresql
