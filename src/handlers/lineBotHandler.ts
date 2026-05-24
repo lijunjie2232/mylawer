@@ -1,4 +1,4 @@
-import { Client } from '@line/bot-sdk';
+import { LineBotClient, channelAccessToken } from '@line/bot-sdk';
 import { config } from '../config/environment.js';
 import { LegalAgent } from '../agents/legalAgent.js';
 import { Logger } from '../utils/logger.js';
@@ -9,15 +9,17 @@ import {
 } from '../types/server';
 
 export class LineBotHandler {
-  private client: Client;
+  private client: LineBotClient;
+  private oauthClient: LineBotClient;
   private legalAgent: LegalAgent;
 
   constructor() {
     // LINE Bot クライアントを初期化
-    this.client = new Client({
-      channelAccessToken: config.line.accessToken || '',
-      channelSecret: config.line.channelSecret || ''
-    });
+    // this.client = new LineBotClient({
+    //   channelAccessToken: config.line.accessToken || '',
+    // });
+    this.client = LineBotClient.fromChannelAccessToken({ channelAccessToken: '...' });
+    this.oauthClient = LineBotClient.fromChannelAccessToken({ channelAccessToken: '...' });
 
     this.legalAgent = new LegalAgent();
     
@@ -191,9 +193,14 @@ export class LineBotHandler {
 
   private async replyMessage(replyToken: string, message: string): Promise<void> {
     try {
-      await this.client.replyMessage(replyToken, {
-        type: 'text',
-        text: message
+      await this.client.replyMessage({
+        replyToken: replyToken,
+        messages: [
+          {
+            type: 'text',
+            text: message
+          }
+        ]
       });
       Logger.debug('メッセージの返信に成功しました');
     } catch (error) {
@@ -207,9 +214,14 @@ export class LineBotHandler {
    */
   async pushMessage(userId: string, message: string): Promise<void> {
     try {
-      await this.client.pushMessage(userId, {
-        type: 'text',
-        text: message
+      await this.client.pushMessage({
+        to: userId,
+        messages: [
+          {
+            type: 'text',
+            text: message
+          }
+        ]
       });
       Logger.debug('プッシュメッセージに成功しました', { userId });
     } catch (error) {
