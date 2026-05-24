@@ -13,7 +13,7 @@ importers:
         version: 1.4.0(@langchain/core@1.1.47(@opentelemetry/api@1.9.1)(openai@6.38.0(ws@8.20.1)(zod@4.4.3))(ws@8.20.1))
       '@langchain/community':
         specifier: ^1.1.28
-        version: 1.1.28(@browserbasehq/sdk@2.12.0)(@browserbasehq/stagehand@1.14.0(@playwright/test@1.58.2)(deepmerge@4.3.1)(dotenv@17.4.2)(openai@6.38.0(ws@8.20.1)(zod@4.4.3))(zod@4.4.3))(@elastic/elasticsearch@8.19.1)(@ibm-cloud/watsonx-ai@1.7.7)(@langchain/core@1.1.47(@opentelemetry/api@1.9.1)(openai@6.38.0(ws@8.20.1)(zod@4.4.3))(ws@8.20.1))(@opentelemetry/api@1.9.1)(cheerio@1.2.0)(duck-duck-scrape@2.2.7)(ibm-cloud-sdk-core@5.4.6)(jsonwebtoken@9.0.3)(lodash@4.18.1)(openai@6.38.0(ws@8.20.1)(zod@4.4.3))(pg@8.21.0)(playwright@1.58.2)(puppeteer@24.37.4(typescript@6.0.3))(ws@8.20.1)
+        version: 1.1.28(@browserbasehq/sdk@2.12.0)(@browserbasehq/stagehand@1.14.0(@playwright/test@1.58.2)(deepmerge@4.3.1)(dotenv@17.4.2)(openai@6.38.0(ws@8.20.1)(zod@4.4.3))(zod@4.4.3))(@elastic/elasticsearch@8.19.1)(@ibm-cloud/watsonx-ai@1.7.7)(@langchain/core@1.1.47(@opentelemetry/api@1.9.1)(openai@6.38.0(ws@8.20.1)(zod@4.4.3))(ws@8.20.1))(@opentelemetry/api@1.9.1)(cheerio@1.2.0)(duck-duck-scrape@2.2.7)(ibm-cloud-sdk-core@5.4.6)(jsonwebtoken@9.0.3)(lodash@4.18.1)(openai@6.38.0(ws@8.20.1)(zod@4.4.3))(pdf-parse@2.4.5)(pg@8.21.0)(playwright@1.58.2)(puppeteer@24.37.4(typescript@6.0.3))(ws@8.20.1)
       '@langchain/core':
         specifier: ^1.1.47
         version: 1.1.47(@opentelemetry/api@1.9.1)(openai@6.38.0(ws@8.20.1)(zod@4.4.3))(ws@8.20.1)
@@ -225,13 +225,22 @@ importers:
   third/webmcp:
     dependencies:
       '@modelcontextprotocol/sdk':
-        specifier: ^1.0.0
+        specifier: ^1.29.0
         version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)
       cloakbrowser:
-        specifier: ^0.3.28
-        version: 0.3.28(playwright-core@1.60.0)(puppeteer-core@24.37.4)
+        specifier: ^0.3.30
+        version: 0.3.30(playwright-core@1.60.0)(puppeteer-core@24.37.4)
+      node-fetch:
+        specifier: ^3.3.2
+        version: 3.3.2
+      pdf-parse:
+        specifier: ^2.4.5
+        version: 2.4.5
+      pdf-parse-fork:
+        specifier: ^1.2.0
+        version: 1.2.0
       playwright-core:
-        specifier: ^1.59.1
+        specifier: ^1.60.0
         version: 1.60.0
 
 packages:
@@ -1572,6 +1581,75 @@ packages:
       '@types/react':
         optional: true
 
+  '@napi-rs/canvas-android-arm64@0.1.80':
+    resolution: {integrity: sha512-sk7xhN/MoXeuExlggf91pNziBxLPVUqF2CAVnB57KLG/pz7+U5TKG8eXdc3pm0d7Od0WreB6ZKLj37sX9muGOQ==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [android]
+
+  '@napi-rs/canvas-darwin-arm64@0.1.80':
+    resolution: {integrity: sha512-O64APRTXRUiAz0P8gErkfEr3lipLJgM6pjATwavZ22ebhjYl/SUbpgM0xcWPQBNMP1n29afAC/Us5PX1vg+JNQ==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@napi-rs/canvas-darwin-x64@0.1.80':
+    resolution: {integrity: sha512-FqqSU7qFce0Cp3pwnTjVkKjjOtxMqRe6lmINxpIZYaZNnVI0H5FtsaraZJ36SiTHNjZlUB69/HhxNDT1Aaa9vA==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [darwin]
+
+  '@napi-rs/canvas-linux-arm-gnueabihf@0.1.80':
+    resolution: {integrity: sha512-eyWz0ddBDQc7/JbAtY4OtZ5SpK8tR4JsCYEZjCE3dI8pqoWUC8oMwYSBGCYfsx2w47cQgQCgMVRVTFiiO38hHQ==}
+    engines: {node: '>= 10'}
+    cpu: [arm]
+    os: [linux]
+
+  '@napi-rs/canvas-linux-arm64-gnu@0.1.80':
+    resolution: {integrity: sha512-qwA63t8A86bnxhuA/GwOkK3jvb+XTQaTiVML0vAWoHyoZYTjNs7BzoOONDgTnNtr8/yHrq64XXzUoLqDzU+Uuw==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@napi-rs/canvas-linux-arm64-musl@0.1.80':
+    resolution: {integrity: sha512-1XbCOz/ymhj24lFaIXtWnwv/6eFHXDrjP0jYkc6iHQ9q8oXKzUX1Lc6bu+wuGiLhGh2GS/2JlfORC5ZcXimRcg==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@napi-rs/canvas-linux-riscv64-gnu@0.1.80':
+    resolution: {integrity: sha512-XTzR125w5ZMs0lJcxRlS1K3P5RaZ9RmUsPtd1uGt+EfDyYMu4c6SEROYsxyatbbu/2+lPe7MPHOO/0a0x7L/gw==}
+    engines: {node: '>= 10'}
+    cpu: [riscv64]
+    os: [linux]
+    libc: [glibc]
+
+  '@napi-rs/canvas-linux-x64-gnu@0.1.80':
+    resolution: {integrity: sha512-BeXAmhKg1kX3UCrJsYbdQd3hIMDH/K6HnP/pG2LuITaXhXBiNdh//TVVVVCBbJzVQaV5gK/4ZOCMrQW9mvuTqA==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@napi-rs/canvas-linux-x64-musl@0.1.80':
+    resolution: {integrity: sha512-x0XvZWdHbkgdgucJsRxprX/4o4sEed7qo9rCQA9ugiS9qE2QvP0RIiEugtZhfLH3cyI+jIRFJHV4Fuz+1BHHMg==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@napi-rs/canvas-win32-x64-msvc@0.1.80':
+    resolution: {integrity: sha512-Z8jPsM6df5V8B1HrCHB05+bDiCxjE9QA//3YrkKIdVDEwn5RKaqOxCJDRJkl48cJbylcrJbW4HxZbTte8juuPg==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [win32]
+
+  '@napi-rs/canvas@0.1.80':
+    resolution: {integrity: sha512-DxuT1ClnIPts1kQx8FBmkk4BQDTfI5kIzywAaMjQSXfNnra5UFU9PwurXrl+Je3bJ6BGsp/zmshVVFbCmyI+ww==}
+    engines: {node: '>= 10'}
+
   '@napi-rs/wasm-runtime@1.1.4':
     resolution: {integrity: sha512-3NQNNgA1YSlJb/kMH1ildASP9HW7/7kYnRI2szWJaofaS1hWmbGI4H+d3+22aGzXXN9IJ+n+GiFVcGipJP18ow==}
     peerDependencies:
@@ -2521,8 +2599,8 @@ packages:
     resolution: {integrity: sha512-BSeNnyus75C4//NQ9gQt1/csTXyo/8Sb+afLAkzAptFuMsod9HFokGNudZpi/oQV73hnVK+sR+5PVRMd+Dr7YQ==}
     engines: {node: '>=12'}
 
-  cloakbrowser@0.3.28:
-    resolution: {integrity: sha512-33IeHiST1V2vbWbLmCFI/tykMsrd6zOwjgM1+669AclA2n0p4RTBLUk5WLUe5AuaTLcjfkE7uKdLi79H39XeAg==}
+  cloakbrowser@0.3.30:
+    resolution: {integrity: sha512-e7kDZzOmqRn9VOFskTDLU6rFqj+TYj68942XFqs2m+CC5G8yHwkHhitjMQJaI/c5Zvl7Aez/kf1JjO/b3VqYaA==}
     engines: {node: '>=20.0.0'}
     hasBin: true
     peerDependencies:
@@ -2672,6 +2750,10 @@ packages:
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
+
+  data-uri-to-buffer@4.0.1:
+    resolution: {integrity: sha512-0R9ikRb668HB7QDxT1vkpuUBtqc53YyAwMwGeUFKRojY/NWKvdZ+9UYtRfGmhqNbRkTSVpMbmyhXipFFv2cb/A==}
+    engines: {node: '>= 12'}
 
   data-uri-to-buffer@6.0.2:
     resolution: {integrity: sha512-7hvf7/GW8e86rW0ptuwS3OcBGDjIi6SZva7hCyWC0yYry2cOPmLIjXAUHI6DK2HsnwJd9ifmt57i8eV2n4YNpw==}
@@ -3055,6 +3137,10 @@ packages:
   fecha@4.2.3:
     resolution: {integrity: sha512-OP2IUU6HeYKJi3i0z4A19kHMQoLVs4Hc+DPqqxI2h/DPZHTm/vjsfC6P0b4jCMy14XizLBqvndQ+UilD7707Jw==}
 
+  fetch-blob@3.2.0:
+    resolution: {integrity: sha512-7yAQpD2UMJzLi1Dqv7qFYnPbaPx7ZfFK6PiIxQ4PfkGPyNyl2Ugx+a/umUonmKqjhM4DnfbMvdX6otXq83soQQ==}
+    engines: {node: ^12.20 || >= 14.13}
+
   file-entry-cache@6.0.1:
     resolution: {integrity: sha512-7Gps/XWymbLk2QLYK4NzpMOrYjMhdIxXuIvy2QBsLE6ljuodKvdkWs/cpyJJ3CVIVpH0Oi1Hvg1ovbMzLdFBBg==}
     engines: {node: ^10.12.0 || >=12.0.0}
@@ -3131,6 +3217,10 @@ packages:
   formdata-node@4.4.1:
     resolution: {integrity: sha512-0iirZp3uVDjVGt9p49aTaqjk84TrglENEDuqfdlZQ1roC9CWlPk6Avf8EEnZNcAqPonwkG35x4n3ww/1THYAeQ==}
     engines: {node: '>= 12.20'}
+
+  formdata-polyfill@4.0.10:
+    resolution: {integrity: sha512-buewHzMvYL29jdeQTVILecSaZKnt/RJWjoZCF5OW60Z67/GmSLBkOFM7qh1PI3zFNtJbaZL5eQu1vLfazOwj4g==}
+    engines: {node: '>=12.20.0'}
 
   forwarded@0.2.0:
     resolution: {integrity: sha512-buRG0fpBtRHSTCOASe6hD258tEubFoRLb4ZNA6NxMVHNw2gOcwHo9wyablzMzOA5z9xA9L1KNjk/Nt6MT9aYow==}
@@ -4076,6 +4166,9 @@ packages:
     engines: {node: '>=10.5.0'}
     deprecated: Use your platform's native DOMException instead
 
+  node-ensure@0.0.0:
+    resolution: {integrity: sha512-DRI60hzo2oKN1ma0ckc6nQWlHU69RH6xN0sjQTjMpChPfTYvKZdcQFfdYK2RWbJcKyUizSIy/l8OTGxMAM1QDw==}
+
   node-fetch@2.7.0:
     resolution: {integrity: sha512-c4FRfUm/dbcWZ7U+1Wq0AwCyFL+3nt2bEw05wfxSz+DWpWsitgmSgYmy2dQdWyKC1694ELPqMs/YzUSNozLt8A==}
     engines: {node: 4.x || >=6.0.0}
@@ -4084,6 +4177,10 @@ packages:
     peerDependenciesMeta:
       encoding:
         optional: true
+
+  node-fetch@3.3.2:
+    resolution: {integrity: sha512-dRB78srN/l6gqWulah9SrxeYnxeddIG30+GOqK/9OlLVyLg3HPnr6SqOWTWOXKRwC2eGYCkZ59NNuSgvSrpgOA==}
+    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
   node-int64@0.4.0:
     resolution: {integrity: sha512-O5lz91xSOeoXP6DulyHfllpq+Eg00MWitZIbtPfoSEvqIHdl5gfcY6hYzDWnj0qD5tz52PI08u9qUvSVeUBeHw==}
@@ -4261,6 +4358,19 @@ packages:
 
   pathe@2.0.3:
     resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
+
+  pdf-parse-fork@1.2.0:
+    resolution: {integrity: sha512-ovXkJaTtw8PfLNhBThKHKsZlT6WrCkVKY/QgsDK5GiD/tuL2qzezSlHpEgqHCnq3r/0GOq3NZ+won78KL/dAjQ==}
+    engines: {node: '>=6.8.1'}
+
+  pdf-parse@2.4.5:
+    resolution: {integrity: sha512-mHU89HGh7v+4u2ubfnevJ03lmPgQ5WU4CxAVmTSh/sxVTEDYd1er/dKS/A6vg77NX47KTEoihq8jZBLr8Cxuwg==}
+    engines: {node: '>=20.16.0 <21 || >=22.3.0'}
+    hasBin: true
+
+  pdfjs-dist@5.4.296:
+    resolution: {integrity: sha512-DlOzet0HO7OEnmUmB6wWGJrrdvbyJKftI1bhMitK7O2N8W2gc757yyYBbINy9IDafXAV9wmKr9t7xsTaNKRG5Q==}
+    engines: {node: '>=20.16.0 || >=22.3.0'}
 
   peek-readable@4.1.0:
     resolution: {integrity: sha512-ZI3LnwUv5nOGbQzD9c2iDG6toheuXSZP5esSHBjopsXH4dg19soufvpUGA3uohi5anFtGb2lhAVdHzH6R/Evvg==}
@@ -5135,6 +5245,10 @@ packages:
 
   web-namespaces@2.0.1:
     resolution: {integrity: sha512-bKr1DkiNa2krS7qxNtdrtHAmzuYGFQLiQ13TsorsdT6ULTkPLKuu5+GsFpDlg6JFjUTwX2DyhMPG2be8uPrqsQ==}
+
+  web-streams-polyfill@3.3.3:
+    resolution: {integrity: sha512-d2JWLCivmZYTSIoge9MsgFCZrt571BikcWGYkjC1khllbTeDlGqZ2D8vD8E/lJa8WGWbb7Plm8/XJYV7IJHZZw==}
+    engines: {node: '>= 8'}
 
   web-streams-polyfill@4.0.0-beta.3:
     resolution: {integrity: sha512-QW95TCTaHmsYfHDybGMwO5IJIM93I/6vTRk+daHTWFPhwh+C8Cg7j7XyKrwrj8Ib6vYXe0ocYNrmzY4xAAN6ug==}
@@ -6149,7 +6263,7 @@ snapshots:
       - openai
       - ws
 
-  '@langchain/community@1.1.28(@browserbasehq/sdk@2.12.0)(@browserbasehq/stagehand@1.14.0(@playwright/test@1.58.2)(deepmerge@4.3.1)(dotenv@17.4.2)(openai@6.38.0(ws@8.20.1)(zod@4.4.3))(zod@4.4.3))(@elastic/elasticsearch@8.19.1)(@ibm-cloud/watsonx-ai@1.7.7)(@langchain/core@1.1.47(@opentelemetry/api@1.9.1)(openai@6.38.0(ws@8.20.1)(zod@4.4.3))(ws@8.20.1))(@opentelemetry/api@1.9.1)(cheerio@1.2.0)(duck-duck-scrape@2.2.7)(ibm-cloud-sdk-core@5.4.6)(jsonwebtoken@9.0.3)(lodash@4.18.1)(openai@6.38.0(ws@8.20.1)(zod@4.4.3))(pg@8.21.0)(playwright@1.58.2)(puppeteer@24.37.4(typescript@6.0.3))(ws@8.20.1)':
+  '@langchain/community@1.1.28(@browserbasehq/sdk@2.12.0)(@browserbasehq/stagehand@1.14.0(@playwright/test@1.58.2)(deepmerge@4.3.1)(dotenv@17.4.2)(openai@6.38.0(ws@8.20.1)(zod@4.4.3))(zod@4.4.3))(@elastic/elasticsearch@8.19.1)(@ibm-cloud/watsonx-ai@1.7.7)(@langchain/core@1.1.47(@opentelemetry/api@1.9.1)(openai@6.38.0(ws@8.20.1)(zod@4.4.3))(ws@8.20.1))(@opentelemetry/api@1.9.1)(cheerio@1.2.0)(duck-duck-scrape@2.2.7)(ibm-cloud-sdk-core@5.4.6)(jsonwebtoken@9.0.3)(lodash@4.18.1)(openai@6.38.0(ws@8.20.1)(zod@4.4.3))(pdf-parse@2.4.5)(pg@8.21.0)(playwright@1.58.2)(puppeteer@24.37.4(typescript@6.0.3))(ws@8.20.1)':
     dependencies:
       '@browserbasehq/stagehand': 1.14.0(@playwright/test@1.58.2)(deepmerge@4.3.1)(dotenv@17.4.2)(openai@6.38.0(ws@8.20.1)(zod@4.4.3))(zod@4.4.3)
       '@ibm-cloud/watsonx-ai': 1.7.7
@@ -6172,6 +6286,7 @@ snapshots:
       duck-duck-scrape: 2.2.7
       jsonwebtoken: 9.0.3
       lodash: 4.18.1
+      pdf-parse: 2.4.5
       pg: 8.21.0
       playwright: 1.58.2
       puppeteer: 24.37.4(typescript@6.0.3)
@@ -6378,6 +6493,49 @@ snapshots:
       react-is: 19.2.6
     optionalDependencies:
       '@types/react': 19.2.14
+
+  '@napi-rs/canvas-android-arm64@0.1.80':
+    optional: true
+
+  '@napi-rs/canvas-darwin-arm64@0.1.80':
+    optional: true
+
+  '@napi-rs/canvas-darwin-x64@0.1.80':
+    optional: true
+
+  '@napi-rs/canvas-linux-arm-gnueabihf@0.1.80':
+    optional: true
+
+  '@napi-rs/canvas-linux-arm64-gnu@0.1.80':
+    optional: true
+
+  '@napi-rs/canvas-linux-arm64-musl@0.1.80':
+    optional: true
+
+  '@napi-rs/canvas-linux-riscv64-gnu@0.1.80':
+    optional: true
+
+  '@napi-rs/canvas-linux-x64-gnu@0.1.80':
+    optional: true
+
+  '@napi-rs/canvas-linux-x64-musl@0.1.80':
+    optional: true
+
+  '@napi-rs/canvas-win32-x64-msvc@0.1.80':
+    optional: true
+
+  '@napi-rs/canvas@0.1.80':
+    optionalDependencies:
+      '@napi-rs/canvas-android-arm64': 0.1.80
+      '@napi-rs/canvas-darwin-arm64': 0.1.80
+      '@napi-rs/canvas-darwin-x64': 0.1.80
+      '@napi-rs/canvas-linux-arm-gnueabihf': 0.1.80
+      '@napi-rs/canvas-linux-arm64-gnu': 0.1.80
+      '@napi-rs/canvas-linux-arm64-musl': 0.1.80
+      '@napi-rs/canvas-linux-riscv64-gnu': 0.1.80
+      '@napi-rs/canvas-linux-x64-gnu': 0.1.80
+      '@napi-rs/canvas-linux-x64-musl': 0.1.80
+      '@napi-rs/canvas-win32-x64-msvc': 0.1.80
 
   '@napi-rs/wasm-runtime@1.1.4(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
     dependencies:
@@ -7397,7 +7555,7 @@ snapshots:
       strip-ansi: 6.0.1
       wrap-ansi: 7.0.0
 
-  cloakbrowser@0.3.28(playwright-core@1.60.0)(puppeteer-core@24.37.4):
+  cloakbrowser@0.3.30(playwright-core@1.60.0)(puppeteer-core@24.37.4):
     dependencies:
       tar: 7.5.15
     optionalDependencies:
@@ -7525,6 +7683,8 @@ snapshots:
   css-what@6.2.2: {}
 
   csstype@3.2.3: {}
+
+  data-uri-to-buffer@4.0.1: {}
 
   data-uri-to-buffer@6.0.2:
     optional: true
@@ -7984,6 +8144,11 @@ snapshots:
 
   fecha@4.2.3: {}
 
+  fetch-blob@3.2.0:
+    dependencies:
+      node-domexception: 1.0.0
+      web-streams-polyfill: 3.3.3
+
   file-entry-cache@6.0.1:
     dependencies:
       flat-cache: 3.2.0
@@ -8060,6 +8225,10 @@ snapshots:
     dependencies:
       node-domexception: 1.0.0
       web-streams-polyfill: 4.0.0-beta.3
+
+  formdata-polyfill@4.0.10:
+    dependencies:
+      fetch-blob: 3.2.0
 
   forwarded@0.2.0: {}
 
@@ -9430,9 +9599,17 @@ snapshots:
 
   node-domexception@1.0.0: {}
 
+  node-ensure@0.0.0: {}
+
   node-fetch@2.7.0:
     dependencies:
       whatwg-url: 5.0.0
+
+  node-fetch@3.3.2:
+    dependencies:
+      data-uri-to-buffer: 4.0.1
+      fetch-blob: 3.2.0
+      formdata-polyfill: 4.0.10
 
   node-int64@0.4.0: {}
 
@@ -9619,6 +9796,22 @@ snapshots:
   path-type@4.0.0: {}
 
   pathe@2.0.3: {}
+
+  pdf-parse-fork@1.2.0:
+    dependencies:
+      debug: 4.4.3(supports-color@5.5.0)
+      node-ensure: 0.0.0
+    transitivePeerDependencies:
+      - supports-color
+
+  pdf-parse@2.4.5:
+    dependencies:
+      '@napi-rs/canvas': 0.1.80
+      pdfjs-dist: 5.4.296
+
+  pdfjs-dist@5.4.296:
+    optionalDependencies:
+      '@napi-rs/canvas': 0.1.80
 
   peek-readable@4.1.0: {}
 
@@ -10573,6 +10766,8 @@ snapshots:
       makeerror: 1.0.12
 
   web-namespaces@2.0.1: {}
+
+  web-streams-polyfill@3.3.3: {}
 
   web-streams-polyfill@4.0.0-beta.3: {}
 
