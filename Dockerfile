@@ -14,7 +14,10 @@ RUN npm install -g corepack \
     && corepack enable pnpm \
     && pnpm -v
 
-# COPY ./scripts/dump-las-202605191426.sql /docker-entrypoint-initdb.d/dump-las-202605191426.sql
+# no-cache after new commit
+ARG CACHEBUST=-1
+RUN echo building for commit "$CACHEBUST"
+# Clone the repository
 RUN git clone https://github.com/lijunjie2232/mylawer.git /app \
     && cd /app \
     && git config --global url."https://github.com/".insteadOf "git@github.com:" \
