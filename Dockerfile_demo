@@ -16,26 +16,6 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && corepack enable pnpm \
     && pnpm -v
 
-# COPY ./scripts/dump-las-202605191426.sql /docker-entrypoint-initdb.d/dump-las-202605191426.sql
-COPY ./scripts/tables.sql /docker-entrypoint-initdb.d/1-tables.sql
-COPY ./scripts/setup-cleanup-job.sql /docker-entrypoint-initdb.d/2-setup-cleanup-job.sql
-
-COPY ./frontend /app/frontend
-COPY ./prisma /app/prisma
-COPY ./src /app/src
-RUN mkdir -p third/legal-mcp/
-COPY ./third/legal-mcp/js_legal /app/third/legal-mcp/js_legal
-COPY ./third/webmcp /app/third/webmcp
-COPY ./.env.demo /app/.env
-COPY LICENSE /app/LICENSE
-COPY package.json /app/package.json
-COPY pnpm-lock.yaml /app/pnpm-lock.yaml
-COPY pnpm-workspace.yaml /app/pnpm-workspace.yaml
-COPY prisma.config.ts /app/prisma.config.ts
-COPY tsconfig.json /app/tsconfig.json
-
-RUN cp /app/scripts/docker-entrypoint_hook.sh /usr/local/bin/docker-entrypoint.sh
-
 # no-cache after new commit
 ARG CACHEBUST=-1
 RUN echo building for commit "$CACHEBUST"
@@ -44,6 +24,8 @@ RUN git clone https://github.com/lijunjie2232/mylawer.git /app \
     && cd /app \
     && git config --global url."https://github.com/".insteadOf "git@github.com:" \
     && git submodule update --init --recursive
+
+RUN cp /app/scripts/docker-entrypoint_hook.sh /usr/local/bin/docker-entrypoint.sh
 
 COPY ./third/legal-mcp/config.yaml /app/third/legal-mcp/config.yaml
 
@@ -55,6 +37,10 @@ RUN cd frontend \
     && pnpm install \
     && pnpm build \
     && cd ../../.. \
+    && cd third/webmcp \
+    && pnpm install \
+    && pnpm binary:sync \
+    && cd ../.. \
     && pnpm i \
     && pnpm db:generate \
     && pnpm build
