@@ -25,7 +25,10 @@ cd mylawer
 git submodule update --init --recursive
 cp .env.example .env
 ```
-# Edit .env and set your LLM_API_KEY
+
+> Edit .env and set your LLM_API_KEY
+
+```bash
 docker-compose -f docker-compose-demo.yaml up -d --build
 ```
 
