@@ -413,8 +413,24 @@ const App: React.FC = () => {
                     break
 
                   case 'tool_call':
-                    console.log('ツール呼び出し:', data.tool)
-                    setStatus(`${data.tool} を請求中、スビード低い場合もある...`)
+                    console.log('ツール呼び出し:', data.tool, data.args)
+                    let toolQuery = ''
+                    if (data.args) {
+                      if (typeof data.args === 'string') {
+                        toolQuery = data.args
+                      } else if (typeof data.args === 'object') {
+                        // よくある引数名（query, input, law_id）を優先的に表示
+                        const args = data.args as any
+                        toolQuery = args.query || args.input || args.law_id || JSON.stringify(args)
+                      }
+                    }
+                    if (toolQuery.length > 100) toolQuery = toolQuery.substring(0, 100) + '...'
+                    setStatus(`${data.tool} を呼び出し中${toolQuery ? `: ${toolQuery}` : ''}...`)
+                    break
+
+                  case 'tool_complete':
+                    console.log('ツール呼び出し完了:', data.tool)
+                    setStatus(`${data.tool} の呼び出しが完了しました`)
                     break
 
                   case 'content':
