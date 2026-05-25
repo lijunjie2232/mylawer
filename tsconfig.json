@@ -24,10 +24,9 @@
         "noImplicitReturns": true,
         "noFallthroughCasesInSwitch": true,
         "moduleResolution": "bundler",
-        "baseUrl": "./",
         "paths": {
             "@/*": [
-                "src/*"
+                "./src/*"
             ]
         },
         "allowJs": true,
