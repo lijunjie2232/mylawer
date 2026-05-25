@@ -110,7 +110,9 @@ COPY --from=js-builder /app/prisma.config.ts   ./prisma.config.ts
 RUN cp /app/scripts/app.sh                              /app/app.sh \
     && cp /app/scripts/supervisord.conf                 /etc/supervisor/conf.d/supervisord.conf \
     && cp /app/scripts/docker-entrypoint_hook.sh        /usr/local/bin/docker-entrypoint.sh \
-    && cp /app/third/legal-mcp/config.example.yaml      /app/third/legal-mcp/config.yaml
+    && cp /app/third/legal-mcp/config.example.yaml      /app/third/legal-mcp/config.yaml \
+    && cp /app/scripts/tables.sql /docker-entrypoint-initdb.d/1-tables.sql \
+    && cp /app/scripts/setup-cleanup-job.sql /docker-entrypoint-initdb.d/2-setup-cleanup-job.sql
 
 EXPOSE 3000
 
