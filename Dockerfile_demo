@@ -1,57 +1,116 @@
+# ============================================================
+# Dockerfile for mylawer demo
+# ============================================================
+# Stage 1: JS Builder
+# ============================================================
+FROM node:24.15.0-bookworm-slim AS js-builder
+
+# Install git only for cloning
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install pnpm BEFORE CACHEBUST so it stays cached
+RUN npm install -g pnpm
+
+# Set before clone so submodules work
+RUN git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+# Cache bust only invalidates from here — pnpm install stays cached
+ARG CACHEBUST=-1
+RUN echo "Building for commit: $CACHEBUST"
+
+RUN git clone https://github.com/lijunjie2232/mylawer.git /app \
+    && cd /app \
+    && git submodule update --init --recursive
+
+# --- Build frontend ---
+WORKDIR /app/frontend
+RUN pnpm install --frozen-lockfile \
+    && pnpm build \
+    && pnpm store prune
+
+# --- Build legal-mcp ---
+WORKDIR /app/third/legal-mcp/js_legal
+RUN pnpm install --frozen-lockfile \
+    && pnpm build \
+    && pnpm store prune
+
+# --- Build webmcp ---
+WORKDIR /app/third/webmcp
+RUN pnpm install --frozen-lockfile \
+    && pnpm binary:sync \
+    && pnpm store prune
+
+# --- Build main app ---
+WORKDIR /app
+RUN pnpm install --frozen-lockfile \
+    && pnpm db:generate \
+    && pnpm build \
+    && pnpm store prune
+
+# Remove devDependencies for production
+RUN pnpm prune
+
+
+# ============================================================
+# Stage 2: Final Runtime Image
+# ============================================================
 FROM postgres:18.4-trixie
 
-# mkdir /app
-RUN mkdir /app
+# Install system deps + Node.js + pnpm in one layer
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get install -y \
+        postgresql-18-cron \
+        supervisor \
+        libatomic1 \
+        curl \
+        libnss3 \
+        libnspr4 \
+        libatk1.0-0 \
+        libatk-bridge2.0-0 \
+        libcups2 \
+        libdrm2 \
+        libxkbcommon0 \
+        libxcomposite1 \
+        libxdamage1 \
+        libxfixes3 \
+        libxrandr2 \
+        libgbm1 \
+        libasound2 \
+        libpango-1.0-0 \
+        libcairo2 \
+        libatspi2.0-0 \
+    && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g corepack \
+    && corepack enable pnpm \
+    && corepack use pnpm \
+    && corepack up \
+    && pnpm -v \
+    && npx playwright install-deps chromium \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get upgrade -y \
-    && apt-get install -y postgresql-18-cron supervisor curl libatomic1 git
+# Copy only built artifacts + prod node_modules (no source, no dev deps)
+COPY --from=js-builder /app/dist            ./dist
+COPY --from=js-builder /app/node_modules    ./node_modules
+COPY --from=js-builder /app/package.json    ./package.json
+COPY --from=js-builder /app/prisma          ./prisma
+COPY --from=js-builder /app/frontend/dist   ./frontend/dist
+COPY --from=js-builder /app/third           ./third
+COPY --from=js-builder /app/scripts         ./scripts
+COPY --from=js-builder /app/prisma.config.ts   ./prisma.config.ts
 
-# Install Node.js
-RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
-    && apt install -y nodejs \
-    && npm install -g corepack \
-    && corepack enable pnpm \
-    && pnpm -v
-
-# no-cache after new commit
-ARG CACHEBUST=-1
-RUN echo building for commit "$CACHEBUST"
-# Clone the repository
-RUN git clone https://github.com/lijunjie2232/mylawer.git /app \
-    && cd /app \
-    && git config --global url."https://github.com/".insteadOf "git@github.com:" \
-    && git submodule update --init --recursive
-
-RUN cp /app/scripts/docker-entrypoint_hook.sh /usr/local/bin/docker-entrypoint.sh
-
-COPY ./third/legal-mcp/config.yaml /app/third/legal-mcp/config.yaml
-
-RUN cd frontend \
-    && pnpm i \
-    && pnpm build \
-    && cd .. \
-    && cd third/legal-mcp/js_legal \
-    && pnpm install \
-    && pnpm build \
-    && cd ../../.. \
-    && cd third/webmcp \
-    && pnpm install \
-    && pnpm binary:sync \
-    && cd ../.. \
-    && pnpm i \
-    && pnpm db:generate \
-    && pnpm build
-
-RUN pnpm store prune
-
-# supervisor
-RUN cp /app/scripts/app.sh /app/app.sh \
-    && cp /app/scripts/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-
-RUN apt-get clean && rm -rf /var/lib/apt/lists/* && rm -rf /tmp/* /var/tmp/*
+# Setup supervisor and config
+RUN cp /app/scripts/app.sh                              /app/app.sh \
+    && cp /app/scripts/supervisord.conf                 /etc/supervisor/conf.d/supervisord.conf \
+    && cp /app/scripts/docker-entrypoint_hook.sh        /usr/local/bin/docker-entrypoint.sh \
+    && cp /app/third/legal-mcp/config.example.yaml      /app/third/legal-mcp/config.yaml
 
 EXPOSE 3000
 
