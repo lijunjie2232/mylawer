@@ -5,7 +5,7 @@ _start_nodejs_app() {
 	cd /app/third/webmcp
 	pnpm binary:sync
 	cd /app
-	pnpm db:migrate:deploy
+	pnpm db:migrate:dev
 	node dist/index.js --serve
 }
 

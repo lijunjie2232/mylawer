@@ -29,7 +29,7 @@ services:
     networks:
       - las-net
     # CMD ["pnpm", "db:migrate:deploy", "&&", "pnpm", "start:server"]
-    command: "sh -c 'pnpm db:migrate:deploy && pnpm start:server'"
+    command: "sh -c 'pnpm db:migrate:dev && pnpm start:server'"
   
   sql:
     image: postgres:18.4-trixie
@@ -44,6 +44,8 @@ services:
       - postgres_logs:/var/log/postgres
     networks:
       - las-net
+    ports:
+      - "5432:5432"
 
 volumes:
   postgres_data:
