@@ -430,10 +430,21 @@ export class Server {
             // chunk に { type, content, messageType, tool, args } が含まれる
             if (chunk && typeof chunk === 'object') {
               if (chunk.type === 'tool_start') {
-                // 发送工具调用开始事件
+                // ツールは送信始まった
                 res.write(`data: ${JSON.stringify({
                   type: 'tool_call',
                   tool: chunk.tool,
+                  args: chunk.args,
+                  timestamp: new Date().toISOString()
+                })}\n\n`);
+                continue;
+              }
+
+              if (chunk.type === 'tool') {
+                // ツールは送信完了
+                res.write(`data: ${JSON.stringify({
+                  type: 'tool_complete',
+                  tool: chunk.toolName,
                   timestamp: new Date().toISOString()
                 })}\n\n`);
                 continue;
@@ -456,7 +467,7 @@ export class Server {
             }
           }
 
-          // 如果是已登录用户，保存助手回复到数据库
+          // データベースに保存する
           if (userId && isUuid(actualSessionId)) {
             await chatService.addMessage(actualSessionId, { role: 'assistant', content: fullResponse });
           }
