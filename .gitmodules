@@ -4,3 +4,6 @@
 [submodule "third/webmcp"]
 	path = third/webmcp
 	url = https://github.com/lijunjie2232/webmcp.git
+[submodule "third/webmcp-r"]
+	path = third/webmcp-r
+	url = https://github.com/lijunjie2232/webmcp-r
