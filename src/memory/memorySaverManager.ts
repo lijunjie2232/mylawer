@@ -1,6 +1,8 @@
 import { Logger } from '../utils/logger.js';
 import { BaseMessage } from '@langchain/core/messages';
 import { LegalAgent } from '../agents/legalAgent.js';
+import { PostgresMemoryManager } from './postgresMemoryManager.js';
+import type { ModelConfig } from '../models/modelManager.js';
 
 /**
  * MemorySaverベースのセッションマネージャー
@@ -9,6 +11,12 @@ import { LegalAgent } from '../agents/legalAgent.js';
 export class MemorySaverManager {
   private static instance: MemorySaverManager;
   private sessions: Map<string, SessionData>;
+  /**
+   * モデル設定ごとの LegalAgent キャッシュ。
+   * LegalAgent はスレッド ID を呼び出しごとに受け取るステートレスな実行器のため、
+   * セッションごとに initChatModel / createAgent を再実行せず再利用する。
+   */
+  private agentsByModel: Map<string, LegalAgent> = new Map();
   private readonly maxSessionAge: number = 30 * 60 * 1000; // 30分間
   private readonly maxMessagesPerSession: number = 20; // セッションあたりの最大メッセージ数
   private readonly cleanupInterval: number = 5 * 60 * 1000; // 5分間クリーンアップ間隔
@@ -17,6 +25,44 @@ export class MemorySaverManager {
     this.sessions = new Map();
     this.startCleanupTimer();
     Logger.info('MemorySaverManager initialized');
+  }
+
+  private modelKey(modelConfig: ModelConfig): string {
+    return [
+      modelConfig.provider,
+      modelConfig.baseUrl,
+      modelConfig.name,
+      modelConfig.maxTokens,
+      modelConfig.temperature,
+    ].join('|');
+  }
+
+  /**
+   * 指定モデル設定の LegalAgent をキャッシュから取得（なければ作成・初期化）。
+   */
+  public async getOrCreateAgent(modelConfig: ModelConfig): Promise<LegalAgent> {
+    const key = this.modelKey(modelConfig);
+    let agent = this.agentsByModel.get(key);
+    if (!agent) {
+      agent = new LegalAgent(modelConfig);
+      this.agentsByModel.set(key, agent);
+    }
+    try {
+      await agent.ensureReady();
+      return agent;
+    } catch (error) {
+      if (this.agentsByModel.get(key) === agent && !agent.isReady()) {
+        this.agentsByModel.delete(key);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * サーバー起動時に既定モデルのエージェントを事前ウォームアップする。
+   */
+  public async warmupModel(modelConfig: ModelConfig): Promise<void> {
+    await this.getOrCreateAgent(modelConfig);
   }
 
   public static getInstance(): MemorySaverManager {
@@ -57,14 +103,13 @@ export class MemorySaverManager {
   }
 
   /**
-   * 为会话创建 agent（在第一次聊天时调用，如果会话不存在则自动创建）
+   * セッション用のエージェントを取得（モデル単位のキャッシュを再利用し、モデル切替にも対応）
    */
-  public async createAgentForSession(sessionId: string, modelConfig: any): Promise<LegalAgent> {
+  public async createAgentForSession(sessionId: string, modelConfig: ModelConfig): Promise<LegalAgent> {
     let session = this.getSession(sessionId);
-      
+
     // セッションが存在しない場合は自動作成
     if (!session) {
-      Logger.warn('セッションが見つからないため、新規作成してエージェントを初期化します', { sessionId });
       this.sessions.set(sessionId, {
         sessionId,
         messages: [],
@@ -75,38 +120,10 @@ export class MemorySaverManager {
       });
       session = this.getSession(sessionId)!;
     }
-  
-    if (session.agent) {
-      return session.agent;
-    }
-  
-    // 创建新的 LegalAgent 实例
-    Logger.info('Creating agent for session on first chat', { 
-      sessionId, 
-      model: modelConfig.name 
-    });
-  
-    const agent = new LegalAgent(modelConfig);
-      
-    // 等待 agent 初始化完成
-    await this.waitForAgentReady(agent);
-  
+
+    const agent = await this.getOrCreateAgent(modelConfig);
     session.agent = agent;
     return agent;
-  }
-
-  /**
-   * 等待Agent初始化完成
-   */
-  private async waitForAgentReady(agent: LegalAgent, timeout: number = 30000): Promise<void> {
-    const startTime = Date.now();
-    
-    while (!agent.isReady()) {
-      if (Date.now() - startTime > timeout) {
-        throw new Error('Agent initialization timeout');
-      }
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
   }
 
   /**
@@ -153,15 +170,20 @@ export class MemorySaverManager {
 
   /**
    * 清理会话
+   * エージェントキャッシュに加え、LangGraph のチェックポイント（会話履歴）も削除する
    */
-  public clearSession(sessionId: string): void {
+  public async clearSession(sessionId: string): Promise<void> {
     const session = this.getSession(sessionId);
     if (session) {
       session.messages = [];
       session.context = {};
       session.agent = null;
-      Logger.info('Session cleared', { sessionId });
     }
+
+    const checkpointer = await PostgresMemoryManager.getInstance().getCheckpointer();
+    await checkpointer.deleteThread(sessionId);
+
+    Logger.info('Session cleared', { sessionId });
   }
 
   /**

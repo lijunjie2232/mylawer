@@ -209,10 +209,17 @@ export class ModelManager {
   private initializeFallbackModels(): void {
     Logger.info('フォールバックモデル設定を初期化中...');
 
-    const newModels = new Map<string, ModelConfig>();
+    const primaryModel = this.buildPrimaryModelConfig();
+    this.models = new Map([[primaryModel.name, primaryModel]]);
 
-    // 主要モデル配置（来自环境变量）
-    const primaryModel: ModelConfig = {
+    Logger.info(`${this.models.size} 個のフォールバックモデル設定を読み込みました`);
+  }
+
+  /**
+   * 環境変数から主要モデル設定を構築
+   */
+  private buildPrimaryModelConfig(): ModelConfig {
+    return {
       name: config.llm.modelName,
       displayName: `${config.llm.modelProvider.toUpperCase()} - ${config.llm.modelName}`,
       provider: config.llm.modelProvider as 'openai' | 'anthropic',
@@ -223,41 +230,43 @@ export class ModelManager {
       description: '主要配置模型',
       isEnabled: true
     };
+  }
 
-    newModels.set(primaryModel.name, primaryModel);
+  /**
+   * デフォルトモデル名を取得
+   */
+  public getDefaultModelName(): string {
+    const enabled = this.getEnabledModels();
+    const preferred = config.llm.defaultModel
+      ? enabled.find(model => model.name === config.llm.defaultModel)
+      : undefined;
+    return preferred?.name ?? enabled[0]?.name ?? config.llm.modelName;
+  }
 
-    // 添加一些常见的备选模型配置
-    const alternativeModels: ModelConfig[] = [
-      // ... (rest of the models code can stay as is or I can keep the commented out parts)
-    ];
+  /**
+   * リクエストされたモデルを解決する。
+   * 不明・無効な場合はデフォルト → フォールバックの順に解決する。
+   */
+  public resolveModel(name?: string): ModelConfig {
+    const requested = name ? this.getModel(name) : undefined;
+    if (requested?.isEnabled) {
+      return requested;
+    }
 
-    // 添加备选模型
-    alternativeModels.forEach(model => {
-      if (!newModels.has(model.name)) {
-        newModels.set(model.name, model);
-      }
-    });
-
-    this.models = newModels;
-    Logger.info(`${this.models.size} 個のフォールバックモデル設定を読み込みました`);
+    const defaultModel = this.getModel(this.getDefaultModelName());
+    return defaultModel ?? this.buildPrimaryModelConfig();
   }
 
   /**
    * すべての有効なモデルリストを取得
    */
   public getEnabledModels(): ModelConfig[] {
-    const enabledModels = Array.from(this.models.values())
-      .filter(model => model.isEnabled);
-    
-    // Apply ALLOW_MODELS filtering if configured
     const allowedModels = config.llm.allowedModels;
-    if (allowedModels && allowedModels.length > 0) {
-      return enabledModels
-        .filter(model => allowedModels.includes(model.name))
-        .sort((a, b) => a.displayName.localeCompare(b.displayName));
-    }
-    
-    return enabledModels.sort((a, b) => a.displayName.localeCompare(b.displayName));
+
+    return Array.from(this.models.values())
+      .filter(model => model.isEnabled)
+      .filter(model => !allowedModels?.length || allowedModels.includes(model.name))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName));
   }
 
   /**

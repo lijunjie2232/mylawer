@@ -9,7 +9,7 @@ import { Logger } from '../utils/logger.js';
 export class PostgresMemoryManager {
   private static instance: PostgresMemoryManager;
   private checkpointer: PostgresSaver | null = null;
-  private isInitialized: boolean = false;
+  private initPromise: Promise<PostgresSaver> | null = null;
 
   private constructor() {}
 
@@ -21,30 +21,35 @@ export class PostgresMemoryManager {
   }
 
   /**
-   * チェックポインターを取得
+   * チェックポインターを取得（並行呼び出しでも setup() は 1 回だけ実行する）
    */
   public async getCheckpointer(): Promise<PostgresSaver> {
-    if (!this.checkpointer) {
-      Logger.info('Initializing PostgresSaver with DATABASE_URL...');
-      
-      try {
-        // config.database.url を使用して PostgresSaver を作成
-        // PostgresSaver.fromConnString は接続文字列を受け取る
-        this.checkpointer = PostgresSaver.fromConnString(config.database.url);
-        
-        // 初回使用時は setup() を呼び出してテーブルを作成
-        if (!this.isInitialized) {
-          Logger.info('Setting up PostgresSaver schema...');
-          await this.checkpointer.setup();
-          this.isInitialized = true;
-          Logger.info('PostgresSaver schema setup completed');
-        }
-      } catch (error) {
-        Logger.error('Failed to initialize PostgresSaver', { error: (error as Error).message });
-        throw error;
-      }
+    if (this.checkpointer) {
+      return this.checkpointer;
     }
-    return this.checkpointer;
+    if (!this.initPromise) {
+      this.initPromise = this.initializeCheckpointer().catch(error => {
+        this.initPromise = null;
+        this.checkpointer = null;
+        throw error;
+      });
+    }
+    return await this.initPromise;
+  }
+
+  private async initializeCheckpointer(): Promise<PostgresSaver> {
+    Logger.info('Initializing PostgresSaver with DATABASE_URL...');
+    try {
+      const checkpointer = PostgresSaver.fromConnString(config.database.url);
+      Logger.info('Setting up PostgresSaver schema...');
+      await checkpointer.setup();
+      this.checkpointer = checkpointer;
+      Logger.info('PostgresSaver schema setup completed');
+      return checkpointer;
+    } catch (error) {
+      Logger.error('Failed to initialize PostgresSaver', { error: (error as Error).message });
+      throw error;
+    }
   }
 
   /**
