@@ -116,13 +116,14 @@ class MCPManager {
     Logger.debug(`MCP client created for ${name}, attempting connection...`);
 
     // Connect to server with timeout and error handling
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
       const connectPromise = client.connect(transport);
       
       // Set a timeout for connection
       const timeoutMs = 30000; // 30 seconds
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error(`Connection timeout after ${timeoutMs}ms`)), timeoutMs);
+        timeoutId = setTimeout(() => reject(new Error(`Connection timeout after ${timeoutMs}ms`)), timeoutMs);
       });
       
       await Promise.race([connectPromise, timeoutPromise]);
@@ -137,6 +138,8 @@ class MCPManager {
         cwd: config.cwd
       });
       throw connectError;
+    } finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
     }
 
     // Get available tools
