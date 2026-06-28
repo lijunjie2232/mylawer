@@ -60,6 +60,51 @@ export class ChatService {
   }
 
   /**
+   * 単一セッションの詳細とユーザーメッセージ件数を 1 クエリで取得
+   */
+  public async getSessionWithUserMessageCount(sessionId: string, userId: string) {
+    try {
+      const session = await this.prisma.chatSession.findUnique({
+        where: { id: sessionId },
+        include: {
+          _count: {
+            select: {
+              messages: { where: { role: 'user' } },
+            },
+          },
+        },
+      });
+
+      if (!session || session.userId !== userId) {
+        return null;
+      }
+
+      return {
+        ...session,
+        userMessageCount: session._count.messages,
+      };
+    } catch (error) {
+      Logger.error('セッション詳細・件数の取得に失敗しました', { error: (error as Error).message });
+      throw error;
+    }
+  }
+
+  /**
+   * 所有者確認済みセッションのタイトルを直接更新（余分な findUnique を省く）
+   */
+  public async updateSessionTitleDirect(sessionId: string, title: string) {
+    try {
+      return await this.prisma.chatSession.update({
+        where: { id: sessionId },
+        data: { title },
+      });
+    } catch (error) {
+      Logger.error('セッションタイトルの更新に失敗しました', { error: (error as Error).message });
+      throw error;
+    }
+  }
+
+  /**
    * ユーザーのすべてのセッションを取得
    */
   public async getUserSessions(userId: string) {
@@ -87,6 +132,15 @@ export class ChatService {
       Logger.error('セッションメッセージの取得に失敗しました', { error: (error as Error).message });
       throw error;
     }
+  }
+
+  /**
+   * セッションのユーザーメッセージ件数（ターン番号の算出に使用）
+   */
+  public async countUserMessages(sessionId: string): Promise<number> {
+    return await this.prisma.message.count({
+      where: { sessionId, role: 'user' },
+    });
   }
 
   /**

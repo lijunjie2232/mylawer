@@ -1,10 +1,12 @@
 import { Router, Response } from 'express';
 import { Logger } from '../utils/logger.js';
 import { ChatService } from '../services/chatService.js';
+import { SessionEventService } from '../services/sessionEventService.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 
 const router: Router = Router();
 const chatService = ChatService.getInstance();
+const eventService = SessionEventService.getInstance();
 
 /**
  * @openapi
@@ -80,12 +82,49 @@ router.get('/sessions/:sessionId/messages', authenticateToken, async (req: any, 
       return;
     }
 
-    // TODO: セッションがこのユーザーに属しているか検証（service レイヤーで部分的に検証済みですが、getSessionMessages は userId を検証していません）
-    // ここでは簡略化のため直接呼び出しますが、本番環境では service レイヤーで検証を強化することをお勧めします
+    const session = await chatService.getSession(sessionId, userId);
+    if (!session) {
+      res.status(404).json({ success: false, message: 'Session not found' });
+      return;
+    }
+
     const messages = await chatService.getSessionMessages(sessionId);
     res.json({ success: true, messages });
   } catch (error) {
     Logger.error('メッセージ取得失敗', { error: (error as Error).message });
+    res.status(500).json({ success: false, message: (error as Error).message });
+  }
+});
+
+/**
+ * @openapi
+ * /api/chat/sessions/{sessionId}/events:
+ *   get:
+ *     summary: セッションのイベントログ（turn/step/tool）を取得
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get('/sessions/:sessionId/events', authenticateToken, async (req: any, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.userId;
+    const { sessionId } = req.params;
+
+    if (!userId) {
+      res.status(401).json({ success: false, message: 'Unauthorized' });
+      return;
+    }
+
+    const session = await chatService.getSession(sessionId, userId);
+    if (!session) {
+      res.status(404).json({ success: false, message: 'Session not found' });
+      return;
+    }
+
+    const events = await eventService.getEvents(sessionId);
+    res.json({ success: true, events });
+  } catch (error) {
+    Logger.error('セッションイベント取得失敗', { error: (error as Error).message });
     res.status(500).json({ success: false, message: (error as Error).message });
   }
 });

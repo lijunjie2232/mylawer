@@ -1,3 +1,4 @@
+import { cpus } from 'os';
 import { Logger } from '../utils/logger.js';
 import { DatabaseService } from './databaseService.js';
 import type { ServerStats, DashboardResponse } from '../types/auth';
@@ -33,7 +34,7 @@ export class AdminService {
       },
       platform: process.platform,
       nodeVersion: process.version,
-      cpuCores: require('os').cpus().length,
+      cpuCores: cpus().length,
     };
   }
 
