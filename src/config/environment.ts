@@ -8,6 +8,8 @@ dotenv.config();
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.string().transform(Number).default(3000),
+  // CORS 許可オリジン（カンマ区切り）。未設定の場合、リクエストの Origin を反映
+  CORS_ORIGIN: z.string().optional(),
   
   // 統一された LLM 設定
   LLM_MODEL_PROVIDER: z.string().default('openai'),
@@ -55,28 +57,22 @@ const envSchema = z.object({
 // 検証および設定のエクスポート
 const env = envSchema.parse(process.env);
 
-// デバッグログ：環境変数の確認
-console.log('=== 環境変数デバッグ ===');
-console.log('LLM_MODEL_PROVIDER:', process.env.LLM_MODEL_PROVIDER);
-console.log('USE_FREE_MODEL:', env.USE_FREE_MODEL);
-console.log('FREE_MODEL_BASE_URL:', env.FREE_MODEL_BASE_URL);
-// Mask LLM_BASE_URL - show only last 4 characters
-const maskedBaseUrl = process.env.LLM_BASE_URL 
-  ? '********' + process.env.LLM_BASE_URL.slice(-4)
-  : '未設定';
-console.log('LLM_BASE_URL:', maskedBaseUrl);
-// Mask LLM_API_KEY - show only last 4 characters
-const maskedApiKey = process.env.LLM_API_KEY 
-  ? '********' + process.env.LLM_API_KEY.slice(-4)
-  : '未設定';
-console.log('LLM_API_KEY:', maskedApiKey);
-console.log('=====================');
+// 本番環境で既定値のままになっている認証情報を警告（起動は継続）
+if (env.NODE_ENV === 'production') {
+  if (/your_jwt_secret|change_in_production/i.test(env.JWT_SECRET)) {
+    console.warn('[SECURITY] JWT_SECRET が既定値のままです。本番環境では必ず変更してください。');
+  }
+  if (env.DEFAULT_ADMIN_PASSWORD === 'Admin123!@#') {
+    console.warn('[SECURITY] DEFAULT_ADMIN_PASSWORD が既定値のままです。本番環境では必ず変更してください。');
+  }
+}
 
 export const config = {
   app: {
     env: env.NODE_ENV,
     port: env.PORT,
     logLevel: env.LOG_LEVEL,
+    corsOrigin: env.CORS_ORIGIN,
   },
   llm: {
     apiKey: env.LLM_API_KEY || '',

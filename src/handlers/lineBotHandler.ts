@@ -1,25 +1,21 @@
-import { LineBotClient, channelAccessToken } from '@line/bot-sdk';
+import { LineBotClient } from '@line/bot-sdk';
 import { config } from '../config/environment.js';
 import { LegalAgent } from '../agents/legalAgent.js';
 import { Logger } from '../utils/logger.js';
-import { 
-  LineWebhookEvent, 
-  LineMessage, 
-  LineWebhookBody 
-} from '../types/server';
+import {
+  LineWebhookEvent,
+  LineWebhookBody
+} from '../types/server.js';
 
 export class LineBotHandler {
-  private client: LineBotClient;
-  private oauthClient: LineBotClient;
+  private client: LineBotClient | null;
   private legalAgent: LegalAgent;
 
   constructor() {
-    // LINE Bot クライアントを初期化
-    // this.client = new LineBotClient({
-    //   channelAccessToken: config.line.accessToken || '',
-    // });
-    this.client = LineBotClient.fromChannelAccessToken({ channelAccessToken: '...' });
-    this.oauthClient = LineBotClient.fromChannelAccessToken({ channelAccessToken: '...' });
+    // アクセストークン未設定時はクライアントを作らない（起動は継続）
+    this.client = config.line.accessToken
+      ? LineBotClient.fromChannelAccessToken({ channelAccessToken: config.line.accessToken })
+      : null;
 
     this.legalAgent = new LegalAgent();
     
@@ -40,9 +36,10 @@ export class LineBotHandler {
 
     Logger.info('LINE webhook イベントを処理中', { eventCount: body.events.length });
 
-    // すべてのイベントを並列処理
-    const promises = body.events.map(event => this.handleEvent(event));
-    await Promise.all(promises);
+    // 同一ユーザーのイベント順序を保つため逐次処理
+    for (const event of body.events) {
+      await this.handleEvent(event);
+    }
   }
 
   /**
@@ -165,25 +162,26 @@ export class LineBotHandler {
     });
   
     try {
-      // セッション ID を生成（ユーザーごとに一意）
-      const sessionId = `line_${userId}_${Date.now()}`;
-        
+      // ユーザーごとにセッションを維持（会話の継続性）
+      const sessionId = `line_${userId}`;
+
       let response = '';
-        
-      // ストリーミングレスポンスを処理
+      let sawDelta = false;
       const stream = await this.legalAgent.getStream(query, sessionId);
-      for await (const chunk of stream) {
-        // getStream now yields string contents directly
-        if (typeof chunk === 'string') {
-          response += chunk;
+      for await (const event of stream) {
+        if (event.type === 'assistant/delta') {
+          response += event.data.text;
+          sawDelta = true;
+        } else if (event.type === 'assistant/message' && !sawDelta) {
+          response += event.data.text;
         }
       }
-  
-      // レスポンスが長すぎないことを確認（LINE は 2000 文字に制限）
-      if (response.length > 1900) {
-        response = response.substring(0, 1900) + '\n\n（文字数制限のため、内容が省略されました）';
+
+      // LINE のテキスト上限は 5000 文字。余裕を持って切り詰める
+      if (response.length > 4500) {
+        response = response.substring(0, 4500) + '\n\n（文字数制限のため、内容が省略されました）';
       }
-  
+
       return response;
     } catch (error) {
       Logger.error('法律クエリの処理に失敗しました', { error, userId, query });
@@ -192,6 +190,10 @@ export class LineBotHandler {
   }
 
   private async replyMessage(replyToken: string, message: string): Promise<void> {
+    if (!this.client) {
+      Logger.error('LINE アクセストークンが未設定のため返信できません');
+      return;
+    }
     try {
       await this.client.replyMessage({
         replyToken: replyToken,
@@ -213,6 +215,10 @@ export class LineBotHandler {
    * プッシュメッセージ（オプション機能）
    */
   async pushMessage(userId: string, message: string): Promise<void> {
+    if (!this.client) {
+      Logger.error('LINE アクセストークンが未設定のためプッシュできません');
+      return;
+    }
     try {
       await this.client.pushMessage({
         to: userId,

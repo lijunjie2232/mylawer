@@ -2,6 +2,7 @@ import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import path from 'path';
 import crypto from 'crypto';
+import { existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import swaggerUi from 'swagger-ui-express';
 import swaggerJsdoc from 'swagger-jsdoc';
@@ -12,39 +13,43 @@ const __dirname = path.dirname(__filename);
 import { config } from './config/environment.js';
 import { swaggerOptions } from './config/swagger.js';
 import { LineBotHandler } from './handlers/lineBotHandler.js';
-import { LegalAgent } from './agents/legalAgent.js';
-import { AgentManager } from './agents/agentManager.js';
 import { ModelManager } from './models/modelManager.js';
 import { Logger } from './utils/logger.js';
 import { MemorySaverManager } from './memory/memorySaverManager.js';
+import { PostgresMemoryManager } from './memory/postgresMemoryManager.js';
+import { initializeMCPServers, getMCPTools } from './mcp/mcpInitializer.js';
+import { loadLegalSkills } from './agents/skills.js';
+import { LegalChatService } from './services/legalChatService.js';
+import { SessionEventService } from './services/sessionEventService.js';
+import { isDurableEvent } from './types/agentEvents.js';
+import type { AgentEvent } from './types/agentEvents.js';
 import { lineSignatureMiddleware } from './middleware/lineSignatureMiddleware.js';
-import { rawBodyMiddleware } from './middleware/rawBodyMiddleware.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { LineWebhookBody } from './types/server.js';
 import { LegalQueryRequest, LegalQueryResponse, ModelsApiResponse, LlmModelsResponse, LlmModel, ModelInfo } from './types/index.js';
 import { DatabaseService } from './services/databaseService.js';
-import { ChatService } from './services/chatService.js';
 import userRoutes from './routes/userRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import chatRoutes from './routes/chatRoutes.js';
-import { authenticateToken, optionalAuth } from './middleware/authMiddleware.js';
+import { optionalAuth } from './middleware/authMiddleware.js';
 
 export class Server {
   private app: Application;
   private lineBotHandler: LineBotHandler;
-  private legalAgent: LegalAgent;
-  private agentManager: AgentManager;
   private modelManager: ModelManager;
+  private legalChatService: LegalChatService;
+  private eventService: SessionEventService;
   private port: number;
   private swaggerSpec: ReturnType<typeof swaggerJsdoc>;
+  private httpServer?: import('http').Server;
 
   constructor() {
     this.app = express();
     this.port = config.app.port;
     this.lineBotHandler = new LineBotHandler();
-    this.legalAgent = new LegalAgent();
-    this.agentManager = AgentManager.getInstance();
     this.modelManager = ModelManager.getInstance();
+    this.legalChatService = LegalChatService.getInstance();
+    this.eventService = SessionEventService.getInstance();
     this.swaggerSpec = swaggerJsdoc(swaggerOptions);
     this.setupMiddleware();
     this.setupDatabase();
@@ -57,16 +62,16 @@ export class Server {
    * ミドルウェアの設定
    */
   private setupMiddleware(): void {
-    // 生リクエストボディミドルウェア（LINE 署名検証用）
-    this.app.use((req, res, next) => rawBodyMiddleware(req as any, res as any, next));
+    // CORS 設定（CORS_ORIGIN 未設定時はリクエスト Origin を反映）
+    const corsOrigin = config.app.corsOrigin;
+    this.app.use(cors(corsOrigin ? { origin: corsOrigin.split(',').map(o => o.trim()) } : {}));
 
-    // CORS 設定
-    if (config.app.env === 'development') {
-      this.app.use(cors({ origin: '*' }));
-    }
-
-    // JSON 解析ミドルウェア
-    this.app.use(express.json());
+    // JSON 解析ミドルウェア（LINE 署名検証用に生ボディも保持）
+    this.app.use(express.json({
+      verify: (req, _res, buf) => {
+        (req as any).rawBody = buf;
+      }
+    }));
 
     // URL エンコード解析ミドルウェア
     this.app.use(express.urlencoded({ extended: true }));
@@ -194,13 +199,7 @@ export class Server {
       path.join(process.cwd(), 'dist/frontend')
     ];
     
-    const frontendDistPath = possiblePaths.find(p => {
-      try {
-        return require('fs').existsSync(p);
-      } catch {
-        return false;
-      }
-    }) || path.join(__dirname, '../frontend/dist');
+    const frontendDistPath = possiblePaths.find(p => existsSync(p)) || path.join(__dirname, '../frontend/dist');
 
     Logger.info(`Serving frontend from: ${frontendDistPath}`);
 
@@ -242,28 +241,20 @@ export class Server {
         // ModelManager から最新のモデルリストを強制的に取得
         const modelManager = ModelManager.getInstance();
         await modelManager.initialize(true);
-    
-        // ModelManager からすべての有効なモデルを取得
-        let models = modelManager.getEnabledModels().map(model => ({
-          name: model.name,
-          displayName: model.displayName,
-          provider: model.provider,
-          description: model.description,
-          isEnabled: model.isEnabled,
-          isHealthy: true
-        }));
-    
-        // DEFAULT_MODEL が設定されている場合、それを先頭に移動
-        const defaultModelId = config.llm.defaultModel;
-        if (defaultModelId) {
-          const defaultModelIndex = models.findIndex(m => m.name === defaultModelId);
-          if (defaultModelIndex > -1) {
-            const [defaultModel] = models.splice(defaultModelIndex, 1);
-            models = [defaultModel, ...models];
-          }
-        }
 
-        const defaultModel = models.length > 0 ? models[0].name : '';
+        const defaultModel = modelManager.getDefaultModelName();
+
+        // ModelManager からすべての有効なモデルを取得（デフォルトを先頭に）
+        const models = modelManager.getEnabledModels()
+          .map(model => ({
+            name: model.name,
+            displayName: model.displayName,
+            provider: model.provider,
+            description: model.description,
+            isEnabled: model.isEnabled,
+            isHealthy: true
+          }))
+          .sort((a, b) => (a.name === defaultModel ? -1 : b.name === defaultModel ? 1 : 0));
     
         const apiResponse: ModelsApiResponse = {
           success: true,
@@ -310,8 +301,17 @@ export class Server {
      *             properties:
      *               question:
      *                 type: string
-     *                 description: 法律関連問題
+     *                 description: 法律関連問題（continue 指定時は不要）
      *                 example: '日本の法律に窃盗罪が定義されていますか？'
+     *               sessionId:
+     *                 type: string
+     *                 description: 継続するセッション ID
+     *               continue:
+     *                 type: boolean
+     *                 description: 中断した回答の続きを生成する
+     *               retry:
+     *                 type: boolean
+     *                 description: 失敗したターンを再試行する（ユーザー発話は再保存しない）
      *               model:
      *                 type: string
      *                 description: 使用するモデル名（オプション）
@@ -330,10 +330,14 @@ export class Server {
      */
     this.app.post('/api/legal/query/stream', optionalAuth, async (req: any, res: Response): Promise<void> => {
       try {
-        const { question, model, sessionId }: LegalQueryRequest & { sessionId?: string } = req.body;
+        const { question, model, sessionId, continue: isContinue, retry }: LegalQueryRequest & {
+          sessionId?: string;
+          continue?: boolean;
+          retry?: boolean;
+        } = req.body;
         const userId = req.user?.userId;
 
-        if (!question || typeof question !== 'string') {
+        if (!isContinue && (!question || typeof question !== 'string')) {
           res.status(400).json({
             success: false,
             error: 'Invalid request: question is required and must be a string'
@@ -342,156 +346,136 @@ export class Server {
         }
 
         Logger.info('法律相談流式リクエストを受信', {
-          question: question.substring(0, 100) + '...',
+          question: question ? question.substring(0, 100) + '...' : '(continuation)',
           model: model || 'default',
           sessionId: sessionId || 'none',
-          userId: userId || 'anonymous'
+          userId: userId || 'anonymous',
+          resume: isContinue ? 'continue' : retry ? 'retry' : undefined,
         });
 
-        // SSE レスポンスヘッダーの設定
+        // SSE レスポンスヘッダーの設定（CORS は cors ミドルウェアが付与）
         res.writeHead(200, {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
           'Connection': 'keep-alive',
-          'Access-Control-Allow-Origin': '*',
+          'X-Accel-Buffering': 'no',
         });
 
-        // 发送开始事件
         res.write(`data: ${JSON.stringify({ type: 'start', timestamp: new Date().toISOString() })}\n\n`);
 
+        // クライアント切断時は生成を打ち切る
+        const controller = new AbortController();
+        let aborted = false;
+        res.on('close', () => {
+          if (!res.writableEnded) {
+            aborted = true;
+            controller.abort();
+          }
+        });
+
+        const send = (event: Record<string, any>) => {
+          if (!aborted && !res.writableEnded) {
+            res.write(`data: ${JSON.stringify(event)}\n\n`);
+          }
+        };
+
         try {
-          // MemorySaverManagerを使用してセッションを処理
-          const memoryManager = MemorySaverManager.getInstance();
-          const chatService = ChatService.getInstance();
-          
-          let actualSessionId = sessionId;
-          const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+          const requestStartedAt = Date.now();
+          // 継続・再試行ではユーザー発話を追加しない（保存済みの文脈から再開する）
+          const chat = isContinue || retry
+            ? await this.legalChatService.prepareResume({ userId, sessionId, model })
+            : await this.legalChatService.prepareChat({ userId, sessionId, question, model });
+          const prepareMs = Date.now() - requestStartedAt;
 
-          if (userId) {
-            let sessionExists = false;
-            let currentSession = null;
-            if (actualSessionId && isUuid(actualSessionId)) {
-              // 检查会话是否存在于数据库中
-              currentSession = await chatService.getSession(actualSessionId, userId);
-              sessionExists = !!currentSession;
-            }
+          const input = isContinue
+            ? null
+            : retry
+              ? `前回の回答が正常に完了しませんでした。改めて次の質問に回答してください。\n\n${question}`
+              : question;
 
-            if (!actualSessionId || !isUuid(actualSessionId) || !sessionExists) {
-              const dbSession = await chatService.createSession(userId, question.substring(0, 30) + (question.length > 30 ? '...' : ''));
-              actualSessionId = dbSession.id;
-              Logger.info('Created new DB session for authenticated user (stream)', { userId, sessionId: actualSessionId });
-            } else if (currentSession && (currentSession.title === '新会话' || !currentSession.title)) {
-              // 如果是默认标题，根据第一个问题更新标题
-              await chatService.updateSessionTitle(actualSessionId, userId, question.substring(0, 30) + (question.length > 30 ? '...' : ''));
-              Logger.info('Updated default session title with first question', { sessionId: actualSessionId });
-            }
-          } else if (!actualSessionId) {
-            actualSessionId = memoryManager.createNewSession();
-          }
+          // 生成完了前に中断されても再開できるよう、セッション ID は最初に通知する
+          send({ type: 'session', sessionId: chat.sessionId, turn: chat.turn, timestamp: new Date().toISOString() });
 
-          let session = memoryManager.getSession(actualSessionId);
-          
-          // セッションが存在しない場合
-          if (!session) {
-            // MemorySaverManager.addMessage 等で自動作成されるため、ここでは何もしなくても良い場合が多い
-          }
+          const stream = await chat.agent.getStream(input, chat.sessionId, {
+            turn: chat.turn,
+            signal: controller.signal,
+          });
+          const streamReadyMs = Date.now() - requestStartedAt;
+          let loggedFirstToken = false;
 
-          // 如果是已登录用户，保存用户消息到数据库
-          if (userId && isUuid(actualSessionId)) {
-            await chatService.addMessage(actualSessionId, { role: 'user', content: question });
-          }
-          
-          // モデル設定を取得
-          const modelManager = ModelManager.getInstance();
-          const enabledModels = modelManager.getEnabledModels();
-          const targetModel = model || (enabledModels.length > 0 ? enabledModels[0].name : config.llm.modelName);
-          const modelConfig = modelManager.getModel(targetModel);
-          
-          if (!modelConfig) {
-            throw new Error(`Model '${targetModel}' not found`);
-          }
-          
-          // セッション用のエージェントを作成（初回チャットの場合）
-          let agent = session?.agent;
-          if (!agent) {
-            agent = await memoryManager.createAgentForSession(actualSessionId, modelConfig);
-            Logger.info('Agent created for session on first chat', { 
-              sessionId: actualSessionId, 
-              model: targetModel 
-            });
-          }
-
-          // ストリーミングレスポンスの取得
-          const stream = await agent.getStream(question, actualSessionId);
-
-          // リアルタイムでストリーミングデータを送信（LLM タイプのメッセージのみ送信）
           let fullResponse = '';
-          for await (const chunk of stream) {
-            // chunk に { type, content, messageType, tool, args } が含まれる
-            if (chunk && typeof chunk === 'object') {
-              if (chunk.type === 'tool_start') {
-                // ツールは送信始まった
-                res.write(`data: ${JSON.stringify({
-                  type: 'tool_call',
-                  tool: chunk.tool,
-                  args: chunk.args,
-                  timestamp: new Date().toISOString()
-                })}\n\n`);
-                continue;
-              }
+          let sawDelta = false;
+          let hadError = false;
+          let sawTurnEnd = false;
 
-              if (chunk.type === 'tool') {
-                // ツールは送信完了
-                res.write(`data: ${JSON.stringify({
-                  type: 'tool_complete',
-                  tool: chunk.toolName,
-                  timestamp: new Date().toISOString()
-                })}\n\n`);
-                continue;
-              }
+          for await (const event of stream) {
+            if (event.type === 'turn/end') sawTurnEnd = true;
+            if (event.type === 'error') hadError = true;
 
-              if (chunk.type === 'llm') {
-                const content = chunk.content;
-                if (typeof content === 'string') {
-                  fullResponse += content;
+            // 確定した事実だけをセッションログに非同期追記する（LLM 開始・SSE 送出を DB 書き込みで止めない）
+            // 切断時のエラー文言は表示専用なので履歴には残さない
+            if (isDurableEvent(event) && chat.persistent && !(aborted && event.type === 'error')) {
+              this.eventService.enqueue(chat.sessionId, event);
+            }
 
-                  // 内容更新イベントの送信
-                  res.write(`data: ${JSON.stringify({
-                    type: 'content',
-                    content: content,
-                    accumulated: fullResponse.length,
-                    messageType: 'llm'
-                  })}\n\n`);
-                }
+            if (event.type === 'assistant/delta') {
+              if (!loggedFirstToken) {
+                loggedFirstToken = true;
+                Logger.info('ストリーム初回トークン到達', {
+                  sessionId: chat.sessionId,
+                  prepareMs,
+                  streamReadyMs,
+                  firstTokenMs: Date.now() - requestStartedAt,
+                });
               }
+              fullResponse += event.data.text;
+              sawDelta = true;
+            } else if (event.type === 'assistant/message' && !sawDelta) {
+              // ストリーミング未対応のプロバイダ向けフォールバック
+              fullResponse += event.data.text;
+            }
+
+            if (!aborted) {
+              send({ type: event.type, ...event.data, timestamp: new Date().toISOString() });
             }
           }
 
-          // データベースに保存する
-          if (userId && isUuid(actualSessionId)) {
-            await chatService.addMessage(actualSessionId, { role: 'assistant', content: fullResponse });
+          if (aborted) {
+            Logger.info('クライアント切断によりストリームを中断', { sessionId: chat.sessionId });
+            // 通常は translator が turn/end を発行済み。未発行の経路だけターンを閉じる。
+            if (chat.persistent && !sawTurnEnd) {
+              this.eventService.enqueue(chat.sessionId, {
+                type: 'turn/end',
+                data: { turn: chat.turn, status: 'aborted' },
+              });
+            }
+            await chat.flush();
+            res.end();
+            return;
           }
 
-          // 完了イベントの送信
-          res.write(`data: ${JSON.stringify({
+          if (hadError) {
+            Logger.error('エージェント実行中にエラーが発生', { sessionId: chat.sessionId });
+            await chat.flush();
+            res.end();
+            return;
+          }
+
+          await this.legalChatService.saveAssistantMessage(chat, fullResponse);
+
+          send({
             type: 'complete',
             finalResponse: fullResponse,
-            modelUsed: agent.getModelName(),
-            sessionId: actualSessionId,
+            modelUsed: chat.agent.getModelName(),
+            sessionId: chat.sessionId,
+            turn: chat.turn,
             timestamp: new Date().toISOString()
-          })}\n\n`);
-
+          });
         } catch (streamError) {
-          // エラーイベントの送信
-          res.write(`data: ${JSON.stringify({
-            type: 'error',
-            error: (streamError as Error).message,
-            timestamp: new Date().toISOString()
-          })}\n\n`);
+          send({ type: 'error', error: (streamError as Error).message, timestamp: new Date().toISOString() });
           Logger.error('ストリーミング処理失敗', { error: (streamError as Error).message });
         }
 
-        // 接続の終了
         res.end();
 
       } catch (error) {
@@ -504,6 +488,8 @@ export class Server {
             timestamp: new Date().toISOString(),
             error: (error as Error).message
           } as LegalQueryResponse);
+        } else {
+          res.end();
         }
       }
     });
@@ -567,81 +553,40 @@ export class Server {
           userId: userId || 'anonymous'
         });
 
-        // MemorySaverManagerを使用してセッションを処理
-        const memoryManager = MemorySaverManager.getInstance();
-        const chatService = ChatService.getInstance();
-        
-        let actualSessionId = sessionId;
-        const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
-        
-        if (userId) {
-          let sessionExists = false;
-          let currentSession = null;
-          if (actualSessionId && isUuid(actualSessionId)) {
-            currentSession = await chatService.getSession(actualSessionId, userId);
-            sessionExists = !!currentSession;
+        const chat = await this.legalChatService.prepareChat({ userId, sessionId, question, model });
+        // 同期 API も同じイベント列を消費し、セッションログを残す
+        const stream = await chat.agent.getStream(question, chat.sessionId, { turn: chat.turn });
+        let answer = '';
+        let sawDelta = false;
+        let errorMessage = '';
+
+        for await (const event of stream) {
+          if (isDurableEvent(event) && chat.persistent) {
+            this.eventService.enqueue(chat.sessionId, event);
           }
-
-          if (!actualSessionId || !isUuid(actualSessionId) || !sessionExists) {
-            const dbSession = await chatService.createSession(userId, question.substring(0, 30) + (question.length > 30 ? '...' : ''));
-            actualSessionId = dbSession.id;
-            Logger.info('Created new DB session for authenticated user', { userId, sessionId: actualSessionId });
-          } else if (currentSession && (currentSession.title === '新会话' || !currentSession.title)) {
-            // 如果是默认标题，根据第一个问题更新标题
-            await chatService.updateSessionTitle(actualSessionId, userId, question.substring(0, 30) + (question.length > 30 ? '...' : ''));
-            Logger.info('Updated default session title with first question', { sessionId: actualSessionId });
+          if (event.type === 'error') {
+            errorMessage = event.data.message;
+          } else if (event.type === 'assistant/delta') {
+            answer += event.data.text;
+            sawDelta = true;
+          } else if (event.type === 'assistant/message' && !sawDelta) {
+            answer += event.data.text;
           }
-        } else if (!actualSessionId) {
-          actualSessionId = memoryManager.createNewSession();
         }
 
-        let session = memoryManager.getSession(actualSessionId);
-        
-        // セッションが存在しない場合、新しいセッションを作成
-        if (!session) {
-          // 如果是 DB 会话但内存中没有，MemorySaverManager.addMessage 会自动创建内存条目
-          // 或者我们可以显式处理
-          session = memoryManager.getSession(actualSessionId); 
+        if (errorMessage) {
+          await chat.flush();
+          throw new Error(errorMessage);
         }
-        
-        // 如果是已登录用户，保存用户消息到数据库
-        if (userId && isUuid(actualSessionId)) {
-          await chatService.addMessage(actualSessionId, { role: 'user', content: question });
-        }
-        
-        // モデル設定を取得
-        const modelManager = ModelManager.getInstance();
-        const enabledModels = modelManager.getEnabledModels();
-        const targetModel = model || (enabledModels.length > 0 ? enabledModels[0].name : config.llm.modelName);
-        const modelConfig = modelManager.getModel(targetModel);
-        
-        if (!modelConfig) {
-          throw new Error(`Model '${targetModel}' not found`);
-        }
-        
-        // セッション用のエージェントを作成（初回チャットの場合）
-        let agent = session?.agent;
-        if (!agent) {
-          agent = await memoryManager.createAgentForSession(actualSessionId, modelConfig);
-          Logger.info('Agent created for session on first chat', { 
-            sessionId: actualSessionId, 
-            model: targetModel 
-          });
-        }
-        
-        const answer = await agent.processQuery(question, actualSessionId);
 
-        // 如果是已登录用户，保存助手回复到数据库
-        if (userId && isUuid(actualSessionId)) {
-          await chatService.addMessage(actualSessionId, { role: 'assistant', content: answer });
-        }
+        await this.legalChatService.saveAssistantMessage(chat, answer);
 
         const response: LegalQueryResponse = {
           success: true,
           question,
           answer,
-          modelUsed: agent.getModelName(),
-          sessionId: actualSessionId || undefined,
+          modelUsed: chat.agent.getModelName(),
+          sessionId: chat.sessionId,
           timestamp: new Date().toISOString()
         };
 
@@ -690,9 +635,8 @@ export class Server {
      */
     this.app.get('/api/sessions/stats', async (req: Request, res: Response): Promise<void> => {
       try {
-        const agent = await this.agentManager.getAgent();
-        const stats = agent.getSessionStats();
-        
+        const stats = MemorySaverManager.getInstance().getSessionStats();
+
         res.json({
           success: true,
           stats,
@@ -806,7 +750,7 @@ export class Server {
         
         // MemorySaverManager を使用してセッションをクリア
         const memoryManager = MemorySaverManager.getInstance();
-        memoryManager.clearSession(sessionId);
+        await memoryManager.clearSession(sessionId);
         
         Logger.info('セッションクリア成功', { sessionId });
         
@@ -919,17 +863,65 @@ export class Server {
   }
 
   /**
+   * サーバー起動時に MCP・チェックポインター・スキル・既定エージェントをバックグラウンドでウォームアップする。
+   * deepseek-harness の起動時サービス初期化と同様、初回チャット入力時のコールドスタート待ちを解消する。
+   */
+  private startRuntimeWarmup(modelManager: ModelManager): void {
+    const startedAt = Date.now();
+    void (async () => {
+      try {
+        loadLegalSkills();
+        await Promise.all([
+          initializeMCPServers()
+            .then(() => getMCPTools())
+            .catch(error => {
+              Logger.warn('バックグラウンド MCP ウォームアップ失敗（チャット時に再試行します）', {
+                error: (error as Error).message,
+              });
+            }),
+          PostgresMemoryManager.getInstance()
+            .getCheckpointer()
+            .catch(error => {
+              Logger.warn('バックグラウンド PostgresSaver ウォームアップ失敗（チャット時に再試行します）', {
+                error: (error as Error).message,
+              });
+            }),
+        ]);
+
+        const defaultModel = modelManager.resolveModel();
+        await MemorySaverManager.getInstance().warmupModel(defaultModel);
+        Logger.info('ランタイム事前ウォームアップ完了', {
+          model: defaultModel.name,
+          durationMs: Date.now() - startedAt,
+        });
+      } catch (error) {
+        Logger.warn('ランタイム事前ウォームアップに失敗しました（初回チャット時に遅延初期化します）', {
+          error: (error as Error).message,
+        });
+      }
+    })();
+  }
+
+  /**
    * サーバーの起動
    */
   public async start(): Promise<void> {
+    // MCP 接続・PostgresSaver・スキル読み込みはモデル一覧取得と並列に即座に開始する
+    loadLegalSkills();
+    void initializeMCPServers().then(() => getMCPTools()).catch(() => {});
+    void PostgresMemoryManager.getInstance().getCheckpointer().catch(() => {});
+
     // 启动时初始化 ModelManager
     Logger.info('Initializing ModelManager...');
     const modelManager = ModelManager.getInstance();
     await modelManager.initialize();
     Logger.info('ModelManager initialized successfully');
 
+    // モデル一覧が揃った段階で既定モデルの LegalAgent も事前ウォームアップする
+    this.startRuntimeWarmup(modelManager);
+
     return new Promise((resolve, reject) => {
-      const server = this.app.listen(this.port, () => {
+      const server = this.httpServer = this.app.listen(this.port, () => {
         Logger.info(`法的アシスタントサーバー起動成功`, {
           port: this.port,
           environment: config.app.env,
@@ -962,14 +954,15 @@ export class Server {
   }
 
   /**
-   * サーバーの停止
+   * サーバーの停止（新規接続を止め、既存接続の完了を待つ）
    */
   public async close(): Promise<void> {
-    return new Promise((resolve) => {
-      // Express アプリケーションには close メソッドがないため、ここではシミュレーションのみ
-      Logger.info('サーバー停止完了');
-      resolve();
+    if (!this.httpServer) return;
+    await new Promise<void>((resolve, reject) => {
+      this.httpServer!.close(error => (error ? reject(error) : resolve()));
     });
+    this.httpServer = undefined;
+    Logger.info('サーバー停止完了');
   }
 
   /**

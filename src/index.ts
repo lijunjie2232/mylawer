@@ -4,11 +4,15 @@ import { LegalAgent } from './agents/legalAgent.js';
 import { Logger } from './utils/logger.js';
 import { config } from './config/environment.js';
 import { Server } from './server.js';
+import { DatabaseService } from './services/databaseService.js';
 import * as readline from 'readline';
 import { cleanupMCPServers } from './mcp/mcpInitializer.js';
 
+let serverInstance: Server | null = null;
+
 class LawAssistant {
   private legalAgent: LegalAgent;
+  private sessionId = `cli_${Date.now()}`;
 
   constructor() {
     this.legalAgent = new LegalAgent();
@@ -24,14 +28,14 @@ class LawAssistant {
    * 法律問題照会の処理（Agentモード使用、ツール呼び出し可能）
    */
   async askLegalQuestion(question: string): Promise<string> {
-    return await this.legalAgent.processQuery(question);
+    return await this.legalAgent.processQuery(question, this.sessionId);
   }
 
   /**
    * 複雑な法律照会の処理（Agentモード、ツール呼び出し）
    */
   async processComplexQuery(query: string): Promise<string> {
-    return await this.legalAgent.processQuery(query);
+    return await this.legalAgent.processQuery(query, this.sessionId);
   }
 
   /**
@@ -121,8 +125,8 @@ async function main() {
   if (isServerMode) {
     // サーバーモード
     Logger.info('サーバーモードを起動');
-    const server = new Server();
-    await server.start();
+    serverInstance = new Server();
+    await serverInstance.start();
   } else {
     // CLI モード
     const assistant = new LawAssistant();
@@ -208,10 +212,20 @@ if (isMainModule) {
 async function shutdown(signal: string) {
   Logger.info(`${signal} 受信、シャットダウンを開始します...`);
   try {
+    await serverInstance?.close();
+  } catch (error) {
+    Logger.error('HTTP サーバーの停止に失敗しました', { error: (error as Error).message });
+  }
+  try {
     await cleanupMCPServers();
     Logger.info('MCP サーバーのクリーンアップが完了しました');
   } catch (error) {
     Logger.error('シャットダウン中のクリーンアップに失敗しました', { error: (error as Error).message });
+  }
+  try {
+    await DatabaseService.disconnect();
+  } catch (error) {
+    Logger.error('データベース切断に失敗しました', { error: (error as Error).message });
   }
   process.exit(0);
 }

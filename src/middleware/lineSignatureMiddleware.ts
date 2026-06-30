@@ -1,6 +1,6 @@
 import { config } from '../config/environment.js';
 import { Logger } from '../utils/logger.js';
-import { MiddlewareFunction, ExtendedRequest } from '../types/server';
+import { ExtendedRequest } from '../types/server';
 import { validateSignature } from '@line/bot-sdk';
 import { Response } from 'express';
 
