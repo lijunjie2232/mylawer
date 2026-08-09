@@ -1,219 +1,382 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import axios from 'axios'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import rehypeRaw from 'rehype-raw'
 import {
   Box,
-  Container,
-  AppBar,
-  Toolbar,
   Typography,
   IconButton,
-  TextField,
   Button,
-  Paper,
-  Avatar,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemAvatar,
-  CircularProgress,
   Alert,
   Snackbar,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Tooltip,
   ThemeProvider,
   createTheme,
-  CssBaseline
+  CssBaseline,
+  Fade,
 } from '@mui/material'
 import {
+  Add as NewChatIcon,
+  Balance as ScaleIcon,
+  Check as CheckIcon,
+  ContentCopy as CopyIcon,
+  EditOutlined as EditIcon,
   Gavel as LawIcon,
-  Send as SendIcon,
-  DarkMode as DarkModeIcon,
-  LightMode as LightModeIcon,
-  Refresh as RefreshIcon,
-  Psychology as AssistantIcon,
-  Person as UserIcon,
-  AutoAwesome as ExamplesIcon,
-  History as HistoryIcon,
-  Login as LoginIcon,
-  AccountCircle as AccountIcon
+  KeyboardArrowDown as ScrollDownIcon,
+  Menu as MenuIcon,
+  UnfoldLess as CollapseAllIcon,
+  UnfoldMore as ExpandAllIcon,
+  VisibilityOutlined as DetailIcon,
 } from '@mui/icons-material'
 import AuthDialog from './components/AuthDialog'
-import HistorySidebar from './components/HistorySidebar'
+import SidebarPanel from './components/SidebarPanel'
+import AgentTrace, { type ExpandSignal } from './components/AgentTrace'
+import ChatComposer, { type ModelOption, type QueuedItem } from './components/ChatComposer'
+import {
+  applyAgentEvent,
+  buildMessages,
+  extractTurnMeta,
+} from './utils/agentTrace'
+import type { ChatMessage, HistoryMessage } from './utils/agentTrace'
 
-// 型定義
-interface Message {
-  id: string
-  content: string
-  sender: 'user' | 'assistant'
-  timestamp: Date
+const EXAMPLE_GROUPS: { category: string; question: string }[] = [
+  { category: '刑法', question: '窃盗罪の定義と成立要件を教えてください。' },
+  { category: '刑法', question: '詐欺罪と横領罪の違いは何ですか？' },
+  { category: '刑法', question: '正当防衛が認められる要件を教えてください。' },
+  { category: '最新法改正', question: '2026年4月から施行される新しい自転車関連の法改正について教えてください。' },
+  { category: '手続き', question: '横浜市で婚姻届を提出する際に必要な書類と手続きを教えてください。' },
+  { category: '生活トラブル', question: '隣人との騒音トラブルに対する法的措置には何がありますか？' },
+]
+
+/** ユーザー発話（右寄せバブル + コピー / 編集して再送信アクション） */
+const UserMessageRow: React.FC<{
+  message: ChatMessage
+  onEditResend: (text: string) => void
+}> = ({ message, onEditResend }) => {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = () => {
+    navigator.clipboard?.writeText(message.content).then(() => {
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1800)
+    }).catch(() => {})
+  }
+
+  return (
+    <Box
+      id={`turn-${message.id}`}
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-end',
+        mb: 3,
+        '&:hover .user-msg-actions': { opacity: 1 },
+      }}
+    >
+      <Box
+        sx={{
+          maxWidth: { xs: '88%', sm: '76%' },
+          px: 2,
+          py: 1.25,
+          borderRadius: '18px',
+          bgcolor: theme =>
+            theme.palette.mode === 'dark' ? 'rgba(96, 143, 255, 0.16)' : '#eef3fe',
+          color: 'text.primary',
+          border: '1px solid',
+          borderColor: theme =>
+            theme.palette.mode === 'dark' ? 'rgba(96, 143, 255, 0.24)' : 'rgba(59, 108, 245, 0.14)',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          fontSize: '0.94rem',
+          lineHeight: 1.6,
+        }}
+      >
+        {message.content}
+      </Box>
+      <Box
+        className="user-msg-actions"
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.5,
+          mt: 0.4,
+          px: 0.5,
+          opacity: { xs: 0.8, sm: 0 },
+          transition: 'opacity 140ms ease',
+        }}
+      >
+        <Typography
+          variant="caption"
+          sx={{ fontSize: '0.72rem', color: 'text.disabled', fontVariantNumeric: 'tabular-nums' }}
+        >
+          {message.timestamp.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+        </Typography>
+        <Tooltip title={copied ? 'コピーしました' : 'コピー'}>
+          <IconButton
+            size="small"
+            onClick={handleCopy}
+            aria-label="メッセージをコピー"
+            sx={{ p: 0.35, color: copied ? 'success.main' : 'text.secondary' }}
+          >
+            {copied ? <CheckIcon sx={{ fontSize: 13 }} /> : <CopyIcon sx={{ fontSize: 13 }} />}
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="編集して再送信">
+          <IconButton
+            size="small"
+            onClick={() => onEditResend(message.content)}
+            aria-label="編集して再送信"
+            sx={{ p: 0.35, color: 'text.secondary' }}
+          >
+            <EditIcon sx={{ fontSize: 13 }} />
+          </IconButton>
+        </Tooltip>
+      </Box>
+    </Box>
+  )
 }
 
-interface ModelInfo {
-  name: string
-  displayName: string
-  provider: string
-  description?: string
-  isEnabled: boolean
-  isHealthy?: boolean
-  responseTime?: number
+/** 右端のターンジャンプ・ナビゲーター（deepseek-harness TurnNavigator 準拠） */
+const TurnNavigatorRail: React.FC<{
+  turns: { id: string; index: number; label: string }[]
+  onJump: (id: string) => void
+}> = ({ turns, onJump }) => {
+  if (turns.length < 2) return null
+
+  return (
+    <Box
+      aria-label="ターンナビゲーター"
+      sx={{
+        display: { xs: 'none', lg: 'flex' },
+        flexDirection: 'column',
+        alignItems: 'flex-end',
+        gap: 0.75,
+        position: 'absolute',
+        right: 12,
+        top: '50%',
+        transform: 'translateY(-50%)',
+        zIndex: 4,
+        py: 1,
+        px: 0.5,
+      }}
+    >
+      {turns.map(turn => (
+        <Tooltip
+          key={turn.id}
+          placement="left"
+          title={`#${turn.index} ${turn.label.slice(0, 48)}${turn.label.length > 48 ? '…' : ''}`}
+        >
+          <Box
+            component="button"
+            type="button"
+            onClick={() => onJump(turn.id)}
+            aria-label={`ターン ${turn.index} へ移動`}
+            sx={{
+              width: 14,
+              height: 4,
+              p: 0,
+              border: 'none',
+              borderRadius: '999px',
+              bgcolor: 'text.disabled',
+              opacity: 0.45,
+              cursor: 'pointer',
+              transition: 'width 120ms ease, opacity 120ms ease, background-color 120ms ease',
+              '&:hover': {
+                width: 22,
+                opacity: 1,
+                bgcolor: 'primary.main',
+              },
+            }}
+          />
+        </Tooltip>
+      ))}
+    </Box>
+  )
 }
 
 const App: React.FC = () => {
-  // 状態管理
-  const [messages, setMessages] = useState<Message[]>([])
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [status, setStatus] = useState<string>('')
-  const [models, setModels] = useState<ModelInfo[]>([])
+  const [models, setModels] = useState<ModelOption[]>([])
   const [selectedModel, setSelectedModel] = useState<string>('')
   const [isModelsLoading, setIsModelsLoading] = useState(true)
   const [sessionId, setSessionId] = useState<string>('')
+  const [sessionTitle, setSessionTitle] = useState<string>('新しい相談')
   const [error, setError] = useState<string | null>(null)
   const [demoWarningOpen, setDemoWarningOpen] = useState(true)
-  const [inputHeight, setInputHeight] = useState<number>(80) // Default height for input area
-  const [isDragging, setIsDragging] = useState<boolean>(false)
+  const [pendingQueue, setPendingQueue] = useState<QueuedItem[]>([])
+  const [showScrollButton, setShowScrollButton] = useState(false)
 
-  // Auth & History states
+  // DeepSeek Harness UI コントロール状態
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => window.innerWidth >= 900)
+  const [detailedMode, setDetailedMode] = useState<boolean>(true)
+  const [expandSignal, setExpandSignal] = useState<ExpandSignal | undefined>(undefined)
+  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0)
+
+  // Auth states
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'))
   const [user, setUser] = useState<any>(null)
   const [authDialogOpen, setAuthDialogOpen] = useState(false)
-  const [historySidebarOpen, setHistorySidebarOpen] = useState(false)
 
-  const containerRef = useRef<HTMLDivElement>(null)
-  const isDraggingRef = useRef<boolean>(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const pinnedToBottomRef = useRef<boolean>(true)
+  const abortRef = useRef<AbortController | null>(null)
 
-  // Fetch user profile if token exists
+  const prefersDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    const savedTheme = localStorage.getItem('theme')
+    if (savedTheme) return savedTheme === 'dark'
+    return prefersDarkMode
+  })
+
+  const theme = useMemo(
+    () =>
+      createTheme({
+        palette: {
+          mode: isDarkMode ? 'dark' : 'light',
+          primary: {
+            main: isDarkMode ? '#608fff' : '#3b6cf5',
+            light: '#7da5ff',
+            dark: '#2854d6',
+          },
+          background: {
+            default: isDarkMode ? '#141518' : '#ffffff',
+            paper: isDarkMode ? '#1c1e22' : '#ffffff',
+          },
+          divider: isDarkMode ? 'rgba(255, 255, 255, 0.09)' : 'rgba(15, 23, 42, 0.09)',
+          text: {
+            primary: isDarkMode ? '#eceff4' : '#111827',
+            secondary: isDarkMode ? '#9ba3b0' : '#4b5563',
+            disabled: isDarkMode ? '#636b78' : '#9ca3af',
+          },
+        },
+        typography: {
+          fontFamily:
+            "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Inter', sans-serif",
+          h5: { fontWeight: 600 },
+          h6: { fontWeight: 600 },
+        },
+        shape: { borderRadius: 12 },
+        components: {
+          MuiButton: {
+            styleOverrides: {
+              root: {
+                borderRadius: 10,
+                textTransform: 'none',
+                fontWeight: 500,
+              },
+            },
+          },
+        },
+      }),
+    [isDarkMode]
+  )
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    const el = scrollRef.current
+    if (!el) return
+    pinnedToBottomRef.current = true
+    setShowScrollButton(false)
+    el.scrollTo({ top: el.scrollHeight, behavior })
+  }, [])
+
+  const handleScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+    const nearBottom = distance < 72
+    pinnedToBottomRef.current = nearBottom
+    setShowScrollButton(!nearBottom)
+  }
+
+  useEffect(() => {
+    if (pinnedToBottomRef.current && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [messages])
+
+  useEffect(() => {
+    if (!isLoading) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !authDialogOpen) {
+        abortRef.current?.abort()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isLoading, authDialogOpen])
+
   useEffect(() => {
     if (token) {
-      axios.get('/api/user/profile', {
-        headers: { Authorization: `Bearer ${token}` }
-      }).then(res => {
-        if (res.data.success) {
-          setUser(res.data.user)
-        }
-      }).catch(err => {
-        console.error('Failed to fetch profile', err)
-        handleLogout()
-      })
+      axios
+        .get('/api/user/profile', {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        .then(res => {
+          if (res.data.success) setUser(res.data.user)
+        })
+        .catch(() => handleLogout())
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
 
   const handleAuthSuccess = (newToken: string, newUser: any) => {
     setToken(newToken)
     setUser(newUser)
     localStorage.setItem('token', newToken)
-    startNewSession()
+    void startNewSession()
   }
 
   const handleLogout = () => {
     setToken(null)
     setUser(null)
     localStorage.removeItem('token')
-    startNewSession()
+    void startNewSession()
   }
 
   const handleDeleteAccount = async () => {
     try {
       await axios.delete('/api/user/delete', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       })
       handleLogout()
-    } catch (err) {
-      console.error('Failed to delete account', err)
-      setError('Failed to delete account')
+    } catch {
+      setError('アカウントの削除に失敗しました')
     }
   }
 
-  const handleSelectSession = async (sid: string) => {
+  const handleSelectSession = async (sid: string, title?: string) => {
+    abortRef.current?.abort()
     setSessionId(sid)
+    setSessionTitle(title || '保存済みの相談')
     localStorage.setItem('sessionId', sid)
     setMessages([])
     setIsLoading(true)
     try {
-      const response = await axios.get(`/api/chat/sessions/${sid}/messages`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      if (response.data.success) {
-        const historyMessages = response.data.messages.map((m: any) => ({
-          id: m.id,
-          content: m.content,
-          sender: m.role,
-          timestamp: new Date(m.createdAt)
-        }))
-        setMessages(historyMessages)
+      const [messagesResponse, eventsResponse] = await Promise.all([
+        axios.get(`/api/chat/sessions/${sid}/messages`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        axios
+          .get(`/api/chat/sessions/${sid}/events`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+          .catch(() => null),
+      ])
+
+      if (messagesResponse.data.success) {
+        const history: HistoryMessage[] = messagesResponse.data.messages ?? []
+        const events = eventsResponse?.data?.success ? eventsResponse.data.events : []
+        pinnedToBottomRef.current = true
+        setMessages(buildMessages(history, events))
       }
-    } catch (err) {
-      console.error('Failed to fetch session messages', err)
-      setError('Failed to load chat history')
+    } catch {
+      setError('会話履歴の読み込みに失敗しました')
     } finally {
       setIsLoading(false)
     }
   }
 
-  // テーマ設定
-  const prefersDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    const savedTheme = localStorage.getItem('theme')
-    if (savedTheme) {
-      return savedTheme === 'dark'
-    }
-    return prefersDarkMode
-  })
-
-  // Material UI テーマの作成
-  const theme = createTheme({
-    palette: {
-      mode: isDarkMode ? 'dark' : 'light',
-      primary: {
-        main: '#1976d2ff',
-        light: '#42a5f5',
-        dark: '#1565c0',
-      },
-      secondary: {
-        main: '#9c27b0',
-        light: '#ba68c8',
-        dark: '#7b1fa2',
-      },
-      background: {
-        default: isDarkMode ? '#121212' : '#f5f5f5',
-        paper: isDarkMode ? '#1e1e1e' : '#ffffff',
-      },
-    },
-    typography: {
-      fontFamily: '"Inter", "Helvetica", "Arial", sans-serif',
-      h4: {
-        fontWeight: 600,
-      },
-      h6: {
-        fontWeight: 600,
-      },
-    },
-    components: {
-      MuiButton: {
-        styleOverrides: {
-          root: {
-            borderRadius: 8,
-            textTransform: 'none',
-          },
-        },
-      },
-      MuiPaper: {
-        styleOverrides: {
-          root: {
-            borderRadius: 12,
-          },
-        },
-      },
-    },
-  })
-
-  // sessionId の初期化
   useEffect(() => {
     const initializeSession = async () => {
       const savedSessionId = localStorage.getItem('sessionId')
@@ -223,59 +386,25 @@ const App: React.FC = () => {
       }
 
       try {
-        const response = await axios.post('/api/sessions/new', {}, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
-        })
+        const response = await axios.post(
+          '/api/sessions/new',
+          {},
+          { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+        )
         if (response.data.success) {
-          const newSessionId = response.data.sessionId
-          setSessionId(newSessionId)
-          localStorage.setItem('sessionId', newSessionId)
+          setSessionId(response.data.sessionId)
+          localStorage.setItem('sessionId', response.data.sessionId)
         }
-      } catch (error) {
-        console.error('新しいセッション ID の取得に失敗:', error)
-        const fallbackSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-        setSessionId(fallbackSessionId)
-        localStorage.setItem('sessionId', fallbackSessionId)
+      } catch {
+        const fallback = `session_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
+        setSessionId(fallback)
+        localStorage.setItem('sessionId', fallback)
       }
     }
 
-    initializeSession()
-  }, [token]) // Re-run if token changes (e.g. login/logout)
+    void initializeSession()
+  }, [token])
 
-  // Setup global mouse events for dragging
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDraggingRef.current || !containerRef.current) return;
-
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const newHeight = containerRect.bottom - e.clientY;
-
-      // Set min and max height constraints
-      const minHeight = 60;
-      const maxHeight = 400;
-
-      if (newHeight >= minHeight && newHeight <= maxHeight) {
-        setInputHeight(newHeight);
-      }
-    };
-
-    const handleMouseUp = () => {
-      isDraggingRef.current = false;
-      setIsDragging(false);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, []);
-
-  // モデルリストを取得
   useEffect(() => {
     const fetchModels = async () => {
       try {
@@ -284,362 +413,744 @@ const App: React.FC = () => {
           setModels(response.data.models)
           setSelectedModel(response.data.defaultModel)
         }
-      } catch (error) {
-        console.error('モデルリストの取得に失敗しました:', error)
-        const fallbackModels: ModelInfo[] = [{
-          name: 'gpt-oss:20b',
-          displayName: 'Ollama - gpt-oss:20b',
-          provider: 'ollama',
-          description: 'デフォルトモデル',
-          isEnabled: true
-        }]
-        setModels(fallbackModels)
+      } catch {
+        setModels([
+          {
+            name: 'gpt-oss:20b',
+            displayName: 'Ollama - gpt-oss:20b',
+            provider: 'ollama',
+            description: 'デフォルトモデル',
+            isEnabled: true,
+          },
+        ])
         setSelectedModel('gpt-oss:20b')
       } finally {
         setIsModelsLoading(false)
       }
     }
 
-    fetchModels()
+    void fetchModels()
   }, [])
 
-  // ダークモードの切り替え
   const toggleDarkMode = () => {
-    const newDarkMode = !isDarkMode
-    setIsDarkMode(newDarkMode)
-    localStorage.setItem('theme', newDarkMode ? 'dark' : 'light')
+    const next = !isDarkMode
+    setIsDarkMode(next)
+    localStorage.setItem('theme', next ? 'dark' : 'light')
   }
 
-  // 新しい会話を開始
   const startNewSession = async () => {
+    abortRef.current?.abort()
+    setPendingQueue([])
+    setSessionTitle('新しい相談')
     try {
       if (sessionId) {
         try {
           await axios.delete(`/api/sessions/${sessionId}/clear`)
-        } catch (error) {
-          console.log('古いセッションのクリアに失敗:', error)
+        } catch {
+          // ignore
         }
       }
 
-      const response = await axios.post('/api/sessions/new', {}, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      })
+      const response = await axios.post(
+        '/api/sessions/new',
+        {},
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+      )
       if (response.data.success) {
-        const newSessionId = response.data.sessionId
-        setSessionId(newSessionId)
-        localStorage.setItem('sessionId', newSessionId)
+        setSessionId(response.data.sessionId)
+        localStorage.setItem('sessionId', response.data.sessionId)
         setMessages([])
         setError(null)
-        console.log('新しい会話が始まりました:', newSessionId)
       }
-    } catch (error) {
-      console.error('新しい会話を開始できませんでした:', error)
-      const fallbackSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      setSessionId(fallbackSessionId)
-      localStorage.setItem('sessionId', fallbackSessionId)
+    } catch {
+      const fallback = `session_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
+      setSessionId(fallback)
+      localStorage.setItem('sessionId', fallback)
       setMessages([])
       setError('セッションの開始に失敗しました')
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!inputValue.trim() || isLoading) return
+  interface SendOptions {
+    retry?: boolean
+    continue?: boolean
+    targetId?: string
+  }
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      content: inputValue,
-      sender: 'user',
-      timestamp: new Date()
-    }
+  const sendQuestion = async (question: string | null, options: SendOptions = {}) => {
+    const { retry = false, continue: isContinue = false, targetId } = options
+    if (!isContinue && !question) return
 
-    setMessages(prev => [...prev, userMessage])
-    setInputValue('')
-    setIsLoading(true)
-    setStatus('回答を生成中...')
     setError(null)
+    setIsLoading(true)
+    pinnedToBottomRef.current = true
+    setShowScrollButton(false)
 
-    const assistantMessageId = (Date.now() + 1).toString()
-    const tempAssistantMessage: Message = {
-      id: assistantMessageId,
-      content: '',
-      sender: 'assistant',
-      timestamp: new Date()
+    if (!isContinue && !retry && question) {
+      if (messages.length === 0) {
+        setSessionTitle(question.slice(0, 28) + (question.length > 28 ? '…' : ''))
+      }
+      const userMessage: ChatMessage = {
+        id: `u-${Date.now()}`,
+        content: question,
+        sender: 'user',
+        timestamp: new Date(),
+        trace: [],
+      }
+      setMessages(prev => [...prev, userMessage])
     }
-    setMessages(prev => [...prev, tempAssistantMessage])
+
+    const assistantMessageId = targetId ?? `a-${Date.now()}`
+
+    if (targetId) {
+      setMessages(prev =>
+        prev.map(msg =>
+          msg.id === targetId ? { ...msg, streaming: true, interrupted: false } : msg
+        )
+      )
+    } else {
+      const tempAssistantMessage: ChatMessage = {
+        id: assistantMessageId,
+        content: '',
+        sender: 'assistant',
+        timestamp: new Date(),
+        trace: [],
+        streaming: true,
+      }
+      setMessages(prev => [...prev, tempAssistantMessage])
+    }
+
+    const patchAssistant = (updater: (msg: ChatMessage) => ChatMessage) => {
+      setMessages(prev => prev.map(msg => (msg.id === assistantMessageId ? updater(msg) : msg)))
+    }
+
+    const handleStreamEvent = (data: any) => {
+      const { type, timestamp: _ts, ...payload } = data
+
+      if (type === 'session') {
+        if (payload.sessionId && payload.sessionId !== sessionId) {
+          setSessionId(payload.sessionId)
+          localStorage.setItem('sessionId', payload.sessionId)
+        }
+        return
+      }
+
+      if (type === 'complete') {
+        if (payload.sessionId && payload.sessionId !== sessionId) {
+          setSessionId(payload.sessionId)
+          localStorage.setItem('sessionId', payload.sessionId)
+        }
+        patchAssistant(msg => ({ ...msg, streaming: false, interrupted: false }))
+        setSidebarRefreshKey(k => k + 1)
+        return
+      }
+
+      if (type === 'error') {
+        patchAssistant(msg => ({
+          ...msg,
+          streaming: false,
+          interrupted: true,
+          trace: applyAgentEvent(msg.trace, 'error', payload, true),
+        }))
+        return
+      }
+
+      patchAssistant(msg => {
+        const nextTrace = applyAgentEvent(msg.trace, type, payload, true)
+        if (type === 'turn/end') {
+          const meta = extractTurnMeta(payload)
+          return {
+            ...msg,
+            trace: nextTrace,
+            streaming: false,
+            interrupted: meta.status === 'error' || meta.status === 'aborted',
+            turnMeta: meta,
+          }
+        }
+        return { ...msg, trace: nextTrace }
+      })
+    }
+
+    const controller = new AbortController()
+    abortRef.current = controller
 
     try {
       const response = await fetch('/api/legal/query/stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
-          question: inputValue,
+          ...(isContinue ? { continue: true } : { question }),
+          retry,
           model: selectedModel,
-          sessionId: sessionId
-        })
+          sessionId,
+        }),
+        signal: controller.signal,
       })
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      if (!response.body) {
-        throw new Error('ReadableStream not supported')
-      }
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+      if (!response.body) throw new Error('ReadableStream not supported')
 
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
-      let accumulatedContent = ''
+      let buffer = ''
 
       try {
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
 
-          const chunk = decoder.decode(value)
-          const lines = chunk.split('\n')
+          buffer += decoder.decode(value, { stream: true })
+          let boundary = buffer.indexOf('\n\n')
 
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
+          while (boundary >= 0) {
+            const block = buffer.slice(0, boundary)
+            buffer = buffer.slice(boundary + 2)
+
+            for (const line of block.split('\n')) {
+              if (!line.startsWith('data:')) continue
+              const raw = line.slice(5).trim()
+              if (!raw) continue
               try {
-                const data = JSON.parse(line.slice(6))
-
-                switch (data.type) {
-                  case 'start':
-                    console.log('ストリーム開始')
-                    break
-
-                  case 'tool_call':
-                    console.log('ツール呼び出し:', data.tool, data.args)
-                    let toolQuery = ''
-                    if (data.args) {
-                      if (typeof data.args === 'string') {
-                        toolQuery = data.args
-                      } else if (typeof data.args === 'object') {
-                        // よくある引数名（query, input, law_id）を優先的に表示
-                        const args = data.args as any
-                        toolQuery = args.query || args.input || args.law_id || JSON.stringify(args)
-                      }
-                    }
-                    if (toolQuery.length > 100) toolQuery = toolQuery.substring(0, 100) + '...'
-                    setStatus(`${data.tool} を呼び出し中${toolQuery ? `: ${toolQuery}` : ''}...`)
-                    break
-
-                  case 'tool_complete':
-                    console.log('ツール呼び出し完了:', data.tool)
-                    setStatus(`${data.tool} の呼び出しが完了しました`)
-                    break
-
-                  case 'content':
-                    // LLM タイプのメッセージのみ表示、tool タイプをフィルタリング
-                    if (data.messageType === 'llm' || !data.messageType) {
-                      accumulatedContent += data.content
-                      setStatus('回答を入力中...')
-                      setMessages(prev => prev.map(msg =>
-                        msg.id === assistantMessageId
-                          ? { ...msg, content: accumulatedContent }
-                          : msg
-                      ))
-                    }
-                    break
-
-                  case 'complete':
-                    console.log('ストリーム完了', {
-                      messageType: data.messageType,
-                      modelUsed: data.modelUsed
-                    })
-                    setStatus('')
-                    // バックエンドが新しい sessionId を返した場合（例えば匿名からログイン済みに変更）、それを更新
-                    if (data.sessionId && data.sessionId !== sessionId) {
-                      setSessionId(data.sessionId)
-                      localStorage.setItem('sessionId', data.sessionId)
-                    }
-                    break
-
-                  case 'error':
-                    setStatus('エラーが発生しました')
-                    setMessages(prev => prev.map(msg =>
-                      msg.id === assistantMessageId
-                        ? { ...msg, content: `エラー：${data.error}` }
-                        : msg
-                    ))
-                    console.error('ストリームエラー:', data.error)
-                    break
-                }
-              } catch (parseError) {
-                continue
+                handleStreamEvent(JSON.parse(raw))
+              } catch {
+                // ignore malformed chunk
               }
             }
+
+            boundary = buffer.indexOf('\n\n')
           }
         }
       } finally {
         reader.releaseLock()
-        setIsLoading(false)
-        setStatus('')
+      }
+    } catch (err) {
+      if ((err as any)?.name === 'AbortError') {
+        patchAssistant(msg => ({
+          ...msg,
+          streaming: false,
+          interrupted: true,
+          turnMeta: msg.turnMeta ?? { status: 'aborted' },
+        }))
+        return
       }
 
-    } catch (error) {
-      console.log('ストリーミング失敗、通常 API にダウングレード:', error)
+      if (retry || isContinue || !question) {
+        patchAssistant(msg => ({ ...msg, streaming: false, interrupted: true }))
+        setError('通信に失敗しました。再試行してください。')
+        return
+      }
+
       try {
-        const response = await axios.post('/api/legal/query', {
-          question: inputValue,
-          model: selectedModel,
-          sessionId: sessionId
-        }, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
-        })
+        const response = await axios.post(
+          '/api/legal/query',
+          { question, model: selectedModel, sessionId },
+          { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+        )
 
         if (response.data.sessionId && response.data.sessionId !== sessionId) {
           setSessionId(response.data.sessionId)
           localStorage.setItem('sessionId', response.data.sessionId)
         }
 
-        setMessages(prev => prev.map(msg =>
-          msg.id === assistantMessageId
-            ? { ...msg, content: response.data.answer }
-            : msg
-        ))
-      } catch (apiError) {
-        setMessages(prev => prev.map(msg =>
-          msg.id === assistantMessageId
-            ? { ...msg, content: '申し訳ありませんが、リクエストの処理中にエラーが発生しました。後ほど再度お試しください。' }
-            : msg
-        ))
+        patchAssistant(msg => ({
+          ...msg,
+          content: response.data.answer,
+          streaming: false,
+        }))
+        setSidebarRefreshKey(k => k + 1)
+      } catch {
+        patchAssistant(msg => ({
+          ...msg,
+          content: '申し訳ありませんが、リクエストの処理中にエラーが発生しました。後ほど再度お試しください。',
+          streaming: false,
+          interrupted: true,
+        }))
         setError('API リクエストに失敗しました')
-        console.error('API リクエストに失敗:', apiError)
-      } finally {
-        setIsLoading(false)
       }
+    } finally {
+      abortRef.current = null
+      patchAssistant(msg => ({ ...msg, streaming: false }))
+      setIsLoading(false)
     }
   }
 
-  const exampleQuestions = [
-    // 刑法関連
-    '窃盗罪の定義を教えてください？',
-    '詐欺罪と横領罪の違いは何ですか？',
-    '正当防衛が認められる要件を教えてください。',
-    '"マッチ売りの少女"という物語の少女には業務横領を犯しましたのか？',
+  /** 実行中はキューに積み、空いたら自動送信する（deepseek-harness next-turn queue） */
+  useEffect(() => {
+    if (isLoading || pendingQueue.length === 0) return
+    const [next, ...rest] = pendingQueue
+    setPendingQueue(rest)
+    void sendQuestion(next.text)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, pendingQueue])
 
-    // 民法関連
-    '2026年4月から新しい自転車法律は施行されるそう、それについて教えてください。',
-    '横浜市では婚姻届を提出する際に必要な書類と手続きを教えてください。',
-    '隣人との騒音トラブルに対する法的措置は何がありますか？',
-    '借金返済が困難になった場合の法的対応を教えてください。',
+  const handleSubmit = (e?: React.FormEvent) => {
+    e?.preventDefault()
+    const text = inputValue.trim()
+    if (!text) return
 
-  ]
+    if (isLoading) {
+      setPendingQueue(prev => [...prev, { id: `q-${Date.now()}-${prev.length}`, text }])
+      setInputValue('')
+      return
+    }
+
+    setInputValue('')
+    void sendQuestion(text)
+  }
+
+  const handleStop = () => {
+    abortRef.current?.abort()
+  }
+
+  /** 任意のターンの再試行（最新ターンは retry: true、過去ターンは該当質問を再送信） */
+  const handleRetryForAssistant = (assistantId: string) => {
+    if (isLoading) return
+    const idx = messages.findIndex(m => m.id === assistantId)
+    if (idx < 0) return
+
+    let question: string | null = null
+    for (let i = idx - 1; i >= 0; i--) {
+      if (messages[i].sender === 'user') {
+        question = messages[i].content
+        break
+      }
+    }
+    if (!question) return
+
+    const isLatest = assistantId === lastAssistantId
+    if (isLatest) {
+      setMessages(prev => prev.filter(msg => msg.id !== assistantId))
+      void sendQuestion(question, { retry: true })
+    } else {
+      void sendQuestion(question)
+    }
+  }
+
+  const handleContinue = (assistantId: string) => {
+    if (isLoading) return
+    void sendQuestion(null, { continue: true, targetId: assistantId })
+  }
+
+  const handleEditResend = (text: string) => {
+    setInputValue(text)
+    inputRef.current?.focus()
+  }
+
+  const handleEditQueued = (item: QueuedItem) => {
+    setPendingQueue(prev => prev.filter(q => q.id !== item.id))
+    setInputValue(item.text)
+    inputRef.current?.focus()
+  }
+
+  const handleSendQueuedNow = (item: QueuedItem) => {
+    // 選んだアイテムを先頭に移動し、現在の生成を中断して即座に次ターンとして発火させる
+    setPendingQueue(prev => [item, ...prev.filter(q => q.id !== item.id)])
+    abortRef.current?.abort()
+  }
+
+  const lastAssistantId = messages.filter(m => m.sender === 'assistant').slice(-1)[0]?.id
+
+  const turnNavItems = useMemo(() => {
+    const out: { id: string; index: number; label: string }[] = []
+    let count = 0
+    for (const msg of messages) {
+      if (msg.sender === 'user') {
+        count += 1
+        out.push({ id: msg.id, index: count, label: msg.content })
+      }
+    }
+    return out
+  }, [messages])
+
+  const jumpToTurn = (userMessageId: string) => {
+    const el = document.getElementById(`turn-${userMessageId}`)
+    if (el) {
+      pinnedToBottomRef.current = false
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-        {/* ヘッダー */}
-        <AppBar position="sticky" color="primary" elevation={1}>
-          <Toolbar>
-            <IconButton
-              color="inherit"
-              edge="start"
-              onClick={() => setHistorySidebarOpen(true)}
-              sx={{ mr: 2 }}
-              disabled={!token}
-            >
-              <HistoryIcon />
-            </IconButton>
-            <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
-              <LawIcon />
-            </Avatar>
-            <Box sx={{ flexGrow: 1 }}>
-              <Typography variant="h6" component="div">
-                法律アシスタント
-              </Typography>
-              <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                プロフェッショナル法律相談サービス
-              </Typography>
-            </Box>
+      <Box
+        sx={{
+          display: 'flex',
+          height: '100vh',
+          width: '100vw',
+          overflow: 'hidden',
+          bgcolor: 'background.default',
+        }}
+      >
+        {/* 左カラム: deepseek-harness 風常設サイドバー */}
+        <SidebarPanel
+          open={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          onToggleCollapse={() => setSidebarOpen(v => !v)}
+          activeSessionId={sessionId}
+          onSelectSession={handleSelectSession}
+          onNewSession={() => void startNewSession()}
+          onOpenAuth={() => setAuthDialogOpen(true)}
+          onLogout={handleLogout}
+          onDeleteAccount={() => void handleDeleteAccount()}
+          token={token}
+          user={user}
+          isDarkMode={isDarkMode}
+          onToggleDarkMode={toggleDarkMode}
+          isLoading={isLoading}
+          refreshKey={sidebarRefreshKey}
+        />
 
-            <FormControl size="small" sx={{ minWidth: 200, mr: 2}}>
-              <InputLabel shrink sx={{ color: 'white' }}>AI モデル</InputLabel>
-              <Select
-                value={selectedModel}
-                label="AI モデル"
-                onChange={(e) => setSelectedModel(e.target.value)}
-                disabled={isLoading || isModelsLoading}
-                sx={{
-                  color: 'white',
-                  '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: 'rgba(255,255,255,0.5)',
-                  },
-                  '&:hover .MuiOutlinedInput-notchedOutline': {
-                    borderColor: 'rgba(255,255,255,0.8)',
-                  },
-                  '& .MuiSelect-select': {
-                    color: 'white',
-                  },
-                }}
-                MenuProps={{
-                  PaperProps: {
-                    sx: {
-                      bgcolor: 'background.paper',
-                      '& .MuiMenuItem-root': {
-                        color: 'text.primary',
-                        '&:hover': {
-                          bgcolor: 'action.hover',
-                        },
-                      },
-                      '& .MuiSelect-icon': {
-                        color: 'text.primary',
-                      },
-                    },
-                  },
-                }}
-              >
-                {models.map(model => (
-                  <MenuItem key={model.name} value={model.name}>
-                    {model.displayName}
-                    {model.isHealthy === false && ' (メンテナンス中)'}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <Tooltip title="新しい会話">
-              <IconButton
-                color="inherit"
-                onClick={startNewSession}
-                disabled={isLoading}
-              >
-                <RefreshIcon />
-              </IconButton>
-            </Tooltip>
-
-            <Tooltip title={isDarkMode ? 'ライトモード' : 'ダークモード'}>
-              <IconButton
-                color="inherit"
-                onClick={toggleDarkMode}
-              >
-                {isDarkMode ? <LightModeIcon /> : <DarkModeIcon />}
-              </IconButton>
-            </Tooltip>
-
-            {token ? (
-              <Tooltip title={user?.name || 'Profile'}>
-                <IconButton color="inherit" onClick={() => setHistorySidebarOpen(true)}>
-                  <AccountIcon />
+        {/* 中央カラム: 会話ヘッダー + スクロール可能トランスクリプト + コンポーザー */}
+        <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
+          {/* スリム会話ヘッダー */}
+          <Box
+            component="header"
+            sx={{
+              flex: 'none',
+              height: 50,
+              px: { xs: 1.25, sm: 2 },
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              borderBottom: '1px solid',
+              borderColor: 'divider',
+              bgcolor: 'background.default',
+            }}
+          >
+            {!sidebarOpen && (
+              <Tooltip title="サイドバーを開く">
+                <IconButton
+                  size="small"
+                  onClick={() => setSidebarOpen(true)}
+                  aria-label="サイドバーを開く"
+                  sx={{ color: 'text.secondary' }}
+                >
+                  <MenuIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
-            ) : (
-              <Button
-                color="inherit"
-                startIcon={<LoginIcon />}
-                onClick={() => setAuthDialogOpen(true)}
-              >
-                Login
-              </Button>
             )}
-          </Toolbar>
-        </AppBar>
+
+            <Typography
+              variant="subtitle2"
+              noWrap
+              sx={{ fontWeight: 500, fontSize: '0.88rem', color: 'text.primary', maxWidth: { xs: 150, sm: 340 } }}
+            >
+              {sessionTitle}
+            </Typography>
+
+            {turnNavItems.length > 0 && (
+              <Typography
+                variant="caption"
+                sx={{
+                  px: 0.75,
+                  py: 0.15,
+                  borderRadius: '6px',
+                  bgcolor: 'action.hover',
+                  color: 'text.secondary',
+                  fontSize: '0.7rem',
+                  fontVariantNumeric: 'tabular-nums',
+                  flex: 'none',
+                }}
+              >
+                {turnNavItems.length} ターン
+              </Typography>
+            )}
+
+            <Box sx={{ flexGrow: 1 }} />
+
+            {/* チャット詳細コントロール群 */}
+            <Tooltip title={detailedMode ? '思考・ツール実行の詳細を自動展開中' : '思考・ツール実行をコンパクト表示中'}>
+              <Button
+                size="small"
+                startIcon={<DetailIcon sx={{ fontSize: 15 }} />}
+                onClick={() => setDetailedMode(v => !v)}
+                sx={{
+                  px: 1,
+                  py: 0.25,
+                  fontSize: '0.75rem',
+                  minHeight: 28,
+                  color: detailedMode ? 'primary.main' : 'text.secondary',
+                  bgcolor: detailedMode
+                    ? theme => theme.palette.mode === 'dark' ? 'rgba(96,143,255,0.12)' : 'rgba(59,108,245,0.08)'
+                    : 'transparent',
+                  border: '1px solid',
+                  borderColor: detailedMode ? 'primary.main' : 'divider',
+                }}
+              >
+                詳細表示
+              </Button>
+            </Tooltip>
+
+            {messages.length > 0 && (
+              <>
+                <Tooltip title="すべての思考・ツール詳細を展開">
+                  <IconButton
+                    size="small"
+                    onClick={() => setExpandSignal({ mode: 'expand', seq: Date.now() })}
+                    aria-label="すべて展開"
+                    sx={{ color: 'text.secondary' }}
+                  >
+                    <ExpandAllIcon sx={{ fontSize: 17 }} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="すべての思考・ツール詳細を折りたたむ">
+                  <IconButton
+                    size="small"
+                    onClick={() => setExpandSignal({ mode: 'collapse', seq: Date.now() })}
+                    aria-label="すべて折りたたむ"
+                    sx={{ color: 'text.secondary' }}
+                  >
+                    <CollapseAllIcon sx={{ fontSize: 17 }} />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
+
+            {!sidebarOpen && (
+              <Tooltip title="新しい会話">
+                <IconButton
+                  size="small"
+                  onClick={() => void startNewSession()}
+                  disabled={isLoading}
+                  aria-label="新しい会話"
+                  sx={{ color: 'text.secondary' }}
+                >
+                  <NewChatIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+              </Tooltip>
+            )}
+          </Box>
+
+          {/* メイン会話エリア */}
+          <Box sx={{ position: 'relative', flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            <Box
+              ref={scrollRef}
+              onScroll={handleScroll}
+              sx={{
+                flex: '1 1 auto',
+                overflowY: 'auto',
+                overflowX: 'hidden',
+                px: { xs: 2, sm: 3.5 },
+                py: { xs: 2.5, sm: 3.5 },
+              }}
+            >
+              <Box sx={{ width: '100%', maxWidth: 768, mx: 'auto' }}>
+                {messages.length === 0 ? (
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      pt: { xs: 4, sm: 7 },
+                      pb: 4,
+                      textAlign: 'center',
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 52,
+                        height: 52,
+                        borderRadius: '16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        bgcolor: theme =>
+                          theme.palette.mode === 'dark' ? 'rgba(96,143,255,0.14)' : 'rgba(59,108,245,0.1)',
+                        color: 'primary.main',
+                        mb: 2,
+                      }}
+                    >
+                      <ScaleIcon sx={{ fontSize: 28 }} />
+                    </Box>
+                    <Typography
+                      variant="h5"
+                      sx={{ mb: 1, fontWeight: 600, letterSpacing: '-0.02em', fontSize: { xs: '1.35rem', sm: '1.55rem' } }}
+                    >
+                      どのような法律のご相談ですか？
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ maxWidth: 540, mb: 4, lineHeight: 1.65 }}
+                    >
+                      法令検索・ウェブ検索ツールで一次情報を確認し、思考過程と根拠を添えて回答します。
+                    </Typography>
+
+                    <Box
+                      sx={{
+                        width: '100%',
+                        display: 'grid',
+                        gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                        gap: 1.25,
+                        textAlign: 'left',
+                      }}
+                    >
+                      {EXAMPLE_GROUPS.map((item, index) => (
+                        <Box
+                          key={index}
+                          component="button"
+                          type="button"
+                          onClick={() => void sendQuestion(item.question)}
+                          sx={{
+                            p: 1.75,
+                            borderRadius: '14px',
+                            border: '1px solid',
+                            borderColor: 'divider',
+                            bgcolor: theme =>
+                              theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : '#fafbfc',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            font: 'inherit',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 0.5,
+                            transition: 'border-color 140ms ease, background-color 140ms ease',
+                            '&:hover': {
+                              borderColor: 'primary.main',
+                              bgcolor: theme =>
+                                theme.palette.mode === 'dark'
+                                  ? 'rgba(96,143,255,0.06)'
+                                  : 'rgba(59,108,245,0.03)',
+                            },
+                          }}
+                        >
+                          <Typography
+                            variant="caption"
+                            sx={{ color: 'primary.main', fontWeight: 500, fontSize: '0.72rem' }}
+                          >
+                            {item.category}
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            sx={{ color: 'text.primary', fontSize: '0.86rem', lineHeight: 1.5 }}
+                          >
+                            {item.question}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  </Box>
+                ) : (
+                  <Box sx={{ pb: 2 }}>
+                    {messages.map(message =>
+                      message.sender === 'user' ? (
+                        <UserMessageRow
+                          key={message.id}
+                          message={message}
+                          onEditResend={handleEditResend}
+                        />
+                      ) : (
+                        <Box
+                          key={message.id}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: 1.75,
+                            mb: 4,
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              width: 28,
+                              height: 28,
+                              mt: 0.25,
+                              borderRadius: '8px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              border: '1px solid',
+                              borderColor: 'divider',
+                              bgcolor: 'background.paper',
+                              color: 'primary.main',
+                              flex: 'none',
+                            }}
+                          >
+                            <LawIcon sx={{ fontSize: 15 }} />
+                          </Box>
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <AgentTrace
+                              items={message.trace}
+                              fallback={message.content}
+                              isStreaming={message.streaming}
+                              interrupted={message.interrupted}
+                              startedAt={message.timestamp.getTime()}
+                              timestamp={message.timestamp}
+                              turnMeta={message.turnMeta}
+                              modelName={selectedModel}
+                              detailedMode={detailedMode}
+                              expandSignal={expandSignal}
+                              isLatestTurn={message.id === lastAssistantId}
+                              onRetry={() => handleRetryForAssistant(message.id)}
+                              onContinue={() => handleContinue(message.id)}
+                            />
+                          </Box>
+                        </Box>
+                      )
+                    )}
+                  </Box>
+                )}
+              </Box>
+            </Box>
+
+            {/* 右端ターンナビゲーター */}
+            <TurnNavigatorRail turns={turnNavItems} onJump={jumpToTurn} />
+
+            {/* フローティング「最新へスクロール」ボタン */}
+            <Fade in={showScrollButton}>
+              <Box
+                sx={{
+                  position: 'absolute',
+                  bottom: 12,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  zIndex: 5,
+                }}
+              >
+                <Tooltip title="最新のメッセージへ">
+                  <IconButton
+                    size="small"
+                    onClick={() => scrollToBottom('smooth')}
+                    aria-label="最新のメッセージへスクロール"
+                    sx={{
+                      width: 34,
+                      height: 34,
+                      bgcolor: 'background.paper',
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      boxShadow: '0 2px 10px rgba(0,0,0,0.12)',
+                      color: 'text.primary',
+                      '&:hover': { bgcolor: 'background.paper' },
+                    }}
+                  >
+                    <ScrollDownIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            </Fade>
+          </Box>
+
+          {/* フローティング会話コンポーザー */}
+          <ChatComposer
+            value={inputValue}
+            onChange={setInputValue}
+            onSubmit={handleSubmit}
+            onStop={handleStop}
+            isLoading={isLoading}
+            models={models}
+            selectedModel={selectedModel}
+            isModelsLoading={isModelsLoading}
+            onSelectModel={setSelectedModel}
+            pendingQueue={pendingQueue}
+            onRemoveQueued={id => setPendingQueue(prev => prev.filter(q => q.id !== id))}
+            onEditQueued={handleEditQueued}
+            onSendQueuedNow={handleSendQueuedNow}
+            inputRef={inputRef}
+          />
+        </Box>
 
         {/* Auth Dialog */}
         <AuthDialog
@@ -648,303 +1159,6 @@ const App: React.FC = () => {
           onSuccess={handleAuthSuccess}
         />
 
-        {/* History Sidebar */}
-        <HistorySidebar
-          open={historySidebarOpen}
-          onClose={() => setHistorySidebarOpen(false)}
-          onSelectSession={handleSelectSession}
-          onLogout={handleLogout}
-          onDeleteAccount={handleDeleteAccount}
-          token={token}
-        />
-
-        {/* メインコンテンツ */}
-        <Container maxWidth="lg" sx={{ flexGrow: 1, py: 3, display: 'flex', flexDirection: 'column', minHeight: 0 }} ref={containerRef}>
-          <Paper
-            elevation={3}
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              height: '100%',
-              minHeight: 0,
-              overflow: 'hidden',
-            }}
-          >
-            {/* メッセージエリア */}
-            <Box
-              sx={{
-                flexGrow: 1,
-                overflow: 'auto',
-                p: 2,
-                pt: 3,
-                minHeight: 0, // Important for flex child scrolling
-              }}
-            >
-              {messages.length === 0 ? (
-                <Box
-                  sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    minHeight: '100%',
-                    textAlign: 'center',
-                  }}
-                >
-                  <LawIcon sx={{ fontSize: 80, color: 'text.secondary', mb: 2, opacity: 0.3 }} />
-                  <Typography variant="h4" gutterBottom color="text.primary">
-                    法律アシスタントへようこそ
-                  </Typography>
-                  <Typography variant="body1" color="text.secondary" paragraph>
-                    私はあなたのプロフェッショナルな法律顧問で、正確な法律相談サービスをいつでも提供します。
-                  </Typography>
-
-                  <Box sx={{ mt: 4, width: '100%', maxWidth: 600 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                      <ExamplesIcon sx={{ mr: 1, color: 'primary.main' }} />
-                      <Typography variant="h6" color="text.primary">
-                        サンプル質問
-                      </Typography>
-                    </Box>
-                    <List>
-                      {exampleQuestions.map((question, index) => (
-                        <ListItem
-                          key={index}
-                          button
-                          onClick={() => setInputValue(question)}
-                          sx={{
-                            borderRadius: 2,
-                            mb: 1,
-                            '&:hover': {
-                              bgcolor: 'action.hover',
-                            },
-                          }}
-                        >
-                          <ListItemText
-                            primary={question}
-                            primaryTypographyProps={{ variant: 'body2' }}
-                          />
-                        </ListItem>
-                      ))}
-                    </List>
-                  </Box>
-                </Box>
-              ) : (
-                <List sx={{ p: 0 }}>
-                  {messages.map(message => (
-                    <ListItem
-                      key={message.id}
-                      sx={{
-                        display: 'flex',
-                        justifyContent: message.sender === 'user' ? 'flex-end' : 'flex-start',
-                        mb: 1,
-                      }}
-                    >
-                      {message.sender === 'assistant' && (
-                        <ListItemAvatar>
-                          <Avatar sx={{ bgcolor: 'primary.main' }}>
-                            <AssistantIcon />
-                          </Avatar>
-                        </ListItemAvatar>
-                      )}
-                      <Paper
-                        elevation={2}
-                        sx={{
-                          p: 2,
-                          maxWidth: '70%',
-                          bgcolor: message.sender === 'user' ? 'primary.main' : 'background.paper',
-                          color: message.sender === 'user' ? 'primary.contrastText' : 'text.primary',
-                          mr: message.sender === 'user' ? 1 : 0, // Add right margin for user messages to move bubble left from avatar
-                        }}
-                      >
-                        {message.sender === 'assistant' ? (
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                            rehypePlugins={[rehypeRaw]}
-                            components={{
-                              table: ({ node, ...props }) => (
-                                <Box sx={{ overflowX: 'auto', my: 2 }}>
-                                  <table {...props} />
-                                </Box>
-                              ),
-                              th: ({ node, children, ...props }) => (
-                                <th {...props} style={{ padding: '8px', borderBottom: '2px solid currentColor' }}>
-                                  {children}
-                                </th>
-                              ),
-                              td: ({ node, children, ...props }) => (
-                                <td {...props} style={{ padding: '8px', borderBottom: '1px solid currentColor' }}>
-                                  {children}
-                                </td>
-                              ),
-                            }}
-                          >
-                            {message.content}
-                          </ReactMarkdown>
-                        ) : (
-                          <Typography variant="body1">{message.content}</Typography>
-                        )}
-                        <Typography
-                          variant="caption"
-                          sx={{
-                            display: 'block',
-                            mt: 1,
-                            opacity: 0.7,
-                            textAlign: 'right',
-                          }}
-                        >
-                          {message.timestamp.toLocaleTimeString('ja-JP')}
-                        </Typography>
-                      </Paper>
-                      {message.sender === 'user' && (
-                        <ListItemAvatar>
-                          <Avatar sx={{ bgcolor: 'secondary.main' }}>
-                            <UserIcon />
-                          </Avatar>
-                        </ListItemAvatar>
-                      )}
-                    </ListItem>
-                  ))}
-
-                  {isLoading && (
-                    <ListItem>
-                      <ListItemAvatar>
-                        <Avatar sx={{ bgcolor: 'primary.main' }}>
-                          <AssistantIcon />
-                        </Avatar>
-                      </ListItemAvatar>
-                      <Paper elevation={2} sx={{ p: 2 }}>
-                        <Box sx={{ display: 'flex', gap: 1 }}>
-                          <CircularProgress size={20} />
-                          <Typography variant="body2" color="text.secondary">
-                            {status}
-                          </Typography>
-                        </Box>
-                      </Paper>
-                    </ListItem>
-                  )}
-                </List>
-              )}
-            </Box>
-
-            {/* Resizable Divider */}
-            <Box
-              sx={{
-                height: '8px',
-                bgcolor: isDragging ? 'primary.main' : 'divider',
-                cursor: 'ns-resize',
-                '&:hover': {
-                  bgcolor: 'primary.light',
-                },
-                position: 'relative',
-                zIndex: 1,
-                transition: 'background-color 0.2s',
-              }}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                isDraggingRef.current = true;
-                setIsDragging(true);
-                document.body.style.cursor = 'ns-resize';
-                document.body.style.userSelect = 'none';
-              }}
-            >
-              <Box
-                sx={{
-                  position: 'absolute',
-                  top: '50%',
-                  left: '50%',
-                  transform: 'translate(-50%, -50%)',
-                  width: '40px',
-                  height: '4px',
-                  bgcolor: 'text.secondary',
-                  borderRadius: '2px',
-                  opacity: 0.5,
-                }}
-              />
-            </Box>
-
-            {/* 入力フォーム */}
-            <Box
-              component="form"
-              onSubmit={handleSubmit}
-              className="chat-input-container"
-              sx={{
-                p: 2,
-                bgcolor: 'background.paper',
-                height: `${inputHeight}px`,
-                minHeight: '60px',
-                display: 'flex',
-                flexDirection: 'column',
-                transition: 'height 0.1s ease',
-                position: 'relative',
-              }}
-            >
-              {/* Height indicator (temporary for debugging) */}
-              <Typography
-                variant="caption"
-                sx={{
-                  position: 'absolute',
-                  top: 4,
-                  right: 8,
-                  opacity: 0.5,
-                  pointerEvents: 'none',
-                }}
-              />
-                {/* {Math.round(inputHeight)}px
-              </Typography> */}
-
-              <Box sx={{ display: 'flex', gap: 2, alignItems: 'stretch', flexGrow: 1, minHeight: 0 }}>
-                <TextField
-                  fullWidth
-                  multiline
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  placeholder="法律相談のご質問を入力してください..."
-                  disabled={isLoading}
-                  variant="outlined"
-                  size="medium"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      handleSubmit(e)
-                    }
-                  }}
-                  InputProps={{
-                    sx: {
-                      height: '100%',
-                      alignItems: 'flex-start',
-                      paddingTop: '8px',
-                      paddingBottom: '8px',
-                    }
-                  }}
-                  inputProps={{
-                    style: {
-                      height: '100%',
-                      overflowY: 'auto',
-                      resize: 'none',
-                    }
-                  }}
-                />
-                <Button
-                  type="submit"
-                  variant="contained"
-                  color="primary"
-                  disabled={!inputValue.trim() || isLoading}
-                  sx={{
-                    minWidth: 64,
-                    alignSelf: 'flex-end',
-                    minHeight: '28px',
-                    height: '100%',
-                    maxHeight: '45px',
-                  }}
-                >
-                  {isLoading ? '送信中...' : <SendIcon />}
-                </Button>
-              </Box>
-            </Box>
-          </Paper>
-        </Container>
-
         {/* エラー通知 */}
         <Snackbar
           open={!!error}
@@ -952,7 +1166,7 @@ const App: React.FC = () => {
           onClose={() => setError(null)}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         >
-          <Alert onClose={() => setError(null)} severity="error" sx={{ width: '100%' }}>
+          <Alert onClose={() => setError(null)} severity="error" sx={{ width: '100%', borderRadius: '12px' }}>
             {error}
           </Alert>
         </Snackbar>
@@ -966,54 +1180,33 @@ const App: React.FC = () => {
         >
           <Alert
             onClose={() => setDemoWarningOpen(false)}
-            severity="warning"
+            severity="info"
+            variant="outlined"
             sx={{
               width: '100%',
-              maxWidth: 600,
-              '& .MuiAlert-message': {
-                width: '100%',
-              }
+              maxWidth: 560,
+              bgcolor: 'background.paper',
+              borderRadius: '14px',
+              boxShadow: '0 6px 24px rgba(0,0,0,0.12)',
+              '& .MuiAlert-message': { width: '100%' },
             }}
           >
-            <Box sx={{ width: '100%' }}>
-              <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
-                ⚠️ デモ環境についてのお知らせ
-              </Typography>
-              <Box component="ul" sx={{ m: 0, pl: 2, mt: 1 }}>
-                <Typography component="li" variant="body2" sx={{ mb: 0.5 }}>
-                  デモ環境のため、LLM の応答速度が遅い場合があります。
-                </Typography>
-                <Typography component="li" variant="body2" sx={{ mb: 0.5 }}>
-                  OpenRouter の無料モデルを使用しているため、遅延やエラーが発生する可能性があります。リクエストが失敗する場合は、他のモデルをお試しください。
-                </Typography>
-                <Typography component="li" variant="body2" sx={{ mb: 0.5 }}>
-                  会話履歴機能をご利用いただくには、アカウントの作成が必要です。作成したアカウントはユーザー自身で削除できます。
-                </Typography>
-                <Typography component="li" variant="body2">
-                  定期的にアカウントを削除しておりますので、ご了承ください。
-                </Typography>
-                <Typography component="li" variant="body2" sx={{
-                  mt: 1,
-                  p: 1,
-                  bgcolor: 'action.selected',
-                  borderRadius: 1,
-                  borderLeft: 3,
-                  borderColor: 'primary.main'
-                }}>
-                  💡 <strong>より高速で安定した利用をご希望の方へ：</strong><br />
-                  プライベートデプロイメントをおすすめします。
-                  <br />
-                  GitHub: <a
-                    href="https://github.com/lijunjie2232/mylawer"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: theme.palette.primary.main, textDecoration: 'underline' }}
-                  >
-                    https://github.com/lijunjie2232/mylawer
-                  </a>
-                </Typography>
-              </Box>
-            </Box>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.25 }}>
+              デモ環境についてのお知らせ
+            </Typography>
+            <Typography variant="caption" color="text.secondary" component="div" sx={{ lineHeight: 1.6 }}>
+              無料モデル利用のため応答に時間がかかる場合があります。会話履歴の保存にはログインが必要です（プライベート構築:{' '}
+              <a
+                href="https://github.com/lijunjie2232/mylawer"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: theme.palette.primary.main }}
+              >
+                GitHub
+              </a>
+              ）。
+              demoのため、最初から起動するので時間が30秒ぐらいかかります。
+            </Typography>
           </Alert>
         </Snackbar>
       </Box>
