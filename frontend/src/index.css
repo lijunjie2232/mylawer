@@ -1,5 +1,4 @@
-/* Material UI uses its own styling system */
-/* Basic reset and font setup */
+/* DeepSeek Harness inspired neutral surface & prose foundation */
 
 * {
   margin: 0;
@@ -11,7 +10,9 @@ html,
 body {
   width: 100%;
   height: 100%;
-  overflow-x: hidden;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
@@ -19,36 +20,136 @@ body {
   height: 100%;
 }
 
-/* Markdown table styles */
-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 16px 0;
+/* Subtle custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-th,
-td {
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.25);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.42);
+}
+
+/* Streaming text shimmer */
+@keyframes dsh-shimmer {
+  0% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.45;
+  }
+}
+
+.dsh-shimmer-text {
+  animation: dsh-shimmer 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dsh-shimmer-text {
+    animation: none;
+  }
+}
+
+/* Editorial Markdown Prose */
+.dsh-markdown {
+  font-size: 0.94rem;
+  line-height: 1.72;
+  word-break: break-word;
+}
+
+.dsh-markdown > *:first-child {
+  margin-top: 0;
+}
+
+.dsh-markdown > *:last-child {
+  margin-bottom: 0;
+}
+
+.dsh-markdown p {
+  margin: 0.65em 0;
+}
+
+.dsh-markdown h1,
+.dsh-markdown h2,
+.dsh-markdown h3,
+.dsh-markdown h4 {
+  margin: 1.15em 0 0.5em;
+  font-weight: 600;
+  line-height: 1.38;
+}
+
+.dsh-markdown h1 { font-size: 1.25rem; }
+.dsh-markdown h2 { font-size: 1.12rem; }
+.dsh-markdown h3 { font-size: 1.02rem; }
+
+.dsh-markdown ul,
+.dsh-markdown ol {
+  margin: 0.55em 0;
+  padding-left: 1.45em;
+}
+
+.dsh-markdown li {
+  margin: 0.28em 0;
+}
+
+.dsh-markdown blockquote {
+  margin: 0.75em 0;
+  padding: 0.35em 0 0.35em 1em;
+  border-left: 2.5px solid rgba(59, 108, 245, 0.45);
+  opacity: 0.88;
+}
+
+.dsh-markdown hr {
+  border: none;
+  border-top: 1px solid rgba(128, 128, 128, 0.22);
+  margin: 1.25em 0;
+}
+
+.dsh-markdown a {
+  color: #3b6cf5;
+  font-weight: 500;
+  text-decoration: none;
+  text-underline-offset: 3px;
+}
+
+.dsh-markdown a:hover {
+  text-decoration: underline dotted;
+}
+
+.dsh-inline-code {
+  font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.84em;
+  padding: 0.14em 0.38em;
+  border-radius: 5px;
+  background: rgba(128, 128, 128, 0.14);
+}
+
+.dsh-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.dsh-markdown th,
+.dsh-markdown td {
   padding: 8px 12px;
-  border: 1px solid rgba(128, 128, 128, 0.3);
+  border-bottom: 1px solid rgba(128, 128, 128, 0.2);
   text-align: left;
 }
 
-th {
-  background-color: rgba(128, 128, 128, 0.1);
+.dsh-markdown th {
   font-weight: 600;
+  background-color: rgba(128, 128, 128, 0.06);
 }
-
-tr:nth-child(even) {
-  background-color: rgba(128, 128, 128, 0.05);
-}
-
-/* Chat input resize styles */
-.MuiInputBase-inputMultiline {
-  min-height: unset !important;
-}
-
-/* Ensure minimum height for chat input container */
-.chat-input-container {
-  min-height: 60px !important;
-}
-
