@@ -66,6 +66,7 @@
     "jsonwebtoken": "^9.0.3",
     "langchain": "^1.4.1",
     "ollama": "^0.6.3",
+    "pdfjs-dist": "^6.5.438",
     "pg": "^8.21.0",
     "prebuilt": "link:@langchain/langgraph/prebuilt",
     "swagger-jsdoc": "^6.2.8",
