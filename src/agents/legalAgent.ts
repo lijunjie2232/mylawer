@@ -13,7 +13,9 @@ import { PostgresMemoryManager } from '../memory/postgresMemoryManager.js';
 import { initializeMCPServers, getMCPTools } from '../mcp/mcpInitializer.js';
 import { buildLegalSystemPrompt } from './prompts.js';
 import { loadLegalSkills } from './skills.js';
+import { createReadUploadedFileTool } from './attachmentTool.js';
 import {
+    maxTokensClampMiddleware,
     repeatToolGuardMiddleware,
     runtimeContextMiddleware,
     toolTimeoutMiddleware,
@@ -93,7 +95,7 @@ export class LegalAgent {
         }
 
         // LLM クライアント・MCP ツール・Postgres チェックポインターを並列に初期化する
-        const [llm, tools, checkpointer] = await Promise.all([
+        const [llm, mcpTools, checkpointer] = await Promise.all([
             initChatModel(
                 this.modelConfig.name,
                 {
@@ -110,9 +112,11 @@ export class LegalAgent {
             PostgresMemoryManager.getInstance().getCheckpointer(),
         ]);
 
-        if (tools.length === 0) {
+        if (mcpTools.length === 0) {
             Logger.warn('No MCP tools available. Agent will run without external tools.');
         }
+
+        const tools = [...mcpTools, createReadUploadedFileTool()];
 
         this.agent = createAgent({
             model: llm,
@@ -127,6 +131,8 @@ export class LegalAgent {
                 runtimeContextMiddleware({ toolNames: tools.map(t => t.name) }),
                 // 一時的な API エラーへの耐性
                 modelRetryMiddleware({ maxRetries: 2 }),
+                // モデル別の max_tokens 上限超過時に自動クランプして即座に再試行
+                maxTokensClampMiddleware(),
                 // 協調的なツールタイムアウト（deepseek-harness timeout-policy 相当）
                 toolTimeoutMiddleware({ timeoutMs: 30_000 }),
                 // 同一ツールの連続呼び出しを検出し助言を添える（deepseek-harness repeat-tool-reminder 相当）

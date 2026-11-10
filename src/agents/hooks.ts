@@ -77,9 +77,20 @@ export function runtimeContextMiddleware(options: { toolNames?: string[] } = {})
       ];
 
       if (toolNames.length > 0) {
-        lines.push(
-          `【検索優先リマインダー】このターンではまだツールが実行されていません。単なる挨拶を除き、必ず利用可能なツール（${toolNames.join(', ')}）で法令条文や最新情報を検索・確認してから最終回答を作成してください。`
-        );
+        const legalTools = toolNames.filter(name => name.startsWith('legal-mcp_'));
+        const webTools = toolNames.filter(name => name.startsWith('webmcp_'));
+        if (legalTools.length > 0 && webTools.length > 0) {
+          const parseHint = webTools.includes('webmcp_parse_url')
+            ? '、有望な候補は webmcp_parse_url で本文を取得して'
+            : '';
+          lines.push(
+            `【検索優先リマインダー】このターンではまだツールが実行されていません。単なる挨拶を除き、原則として法令検索ツール（${legalTools.join(', ')}）で条文根拠を確認しつつ、ウェブ検索ツール（${webTools.join(', ')}）でも最新改正・判例・実務解説を検索し${parseHint}から最終回答を作成してください。`
+          );
+        } else {
+          lines.push(
+            `【検索優先リマインダー】このターンではまだツールが実行されていません。単なる挨拶を除き、必ず利用可能なツール（${toolNames.join(', ')}）で法令条文や最新情報を検索・確認してから最終回答を作成してください。`
+          );
+        }
       }
 
       lines.push('</system-reminder>');
@@ -211,6 +222,83 @@ export function repeatToolGuardMiddleware(options: {
       }
 
       return result;
+    },
+  });
+}
+
+/**
+ * LLM プロバイダの 400 エラーメッセージからモデルの最大出力トークン上限を抽出する。
+ * 例: "The requested max_tokens (262144) exceeds the maximum output tokens allowed for model MiniCPM-V-4.7-35B-A3B (32768)"
+ */
+export function extractMaxOutputTokensLimit(error: unknown): number | null {
+  const message =
+    typeof error === 'string'
+      ? error
+      : error instanceof Error
+        ? error.message
+        : String((error as any)?.message ?? '');
+
+  if (!/max_tokens|max_completion_tokens/i.test(message)) {
+    return null;
+  }
+
+  const patterns = [
+    /exceeds\s+the\s+maximum\s+output\s+tokens\s+allowed\s+for\s+model\s+\S+\s*\((\d+)\)/i,
+    /maximum\s+(?:output\s+|completion\s+)?tokens?(?:\s+allowed)?(?:\s+for\s+[^()\d]+)?[:\s(]+(\d+)\)?/i,
+    /supports?\s+at\s+most\s+(\d+)\s+completion\s+tokens/i,
+    /max_tokens\s+is\s+too\s+large[^.\n]*?(\d+)\s*$/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    if (match) {
+      const limit = Number(match[1]);
+      if (Number.isFinite(limit) && limit > 0) {
+        return limit;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * モデルの最大出力トークン超過（400 BadRequestError）を検出した際、
+ * サーバーが通知した上限値へ maxTokens を自動クランプして即座に 1 回リトライするミドルウェア。
+ */
+export function maxTokensClampMiddleware() {
+  let clampedLimit: number | null = null;
+
+  const applyClamp = (model: any, limit: number) => {
+    if (!model || typeof model !== 'object') return;
+    if (typeof model.maxTokens !== 'number' || model.maxTokens > limit) {
+      model.maxTokens = limit;
+    }
+  };
+
+  return createMiddleware({
+    name: 'legal-max-tokens-clamp',
+    wrapModelCall: async (request, handler) => {
+      if (clampedLimit !== null) {
+        applyClamp(request.model, clampedLimit);
+      }
+
+      try {
+        return await handler(request);
+      } catch (error) {
+        const limit = extractMaxOutputTokensLimit(error);
+        const current = typeof (request.model as any)?.maxTokens === 'number'
+          ? (request.model as any).maxTokens
+          : Infinity;
+
+        if (limit !== null && limit < current) {
+          clampedLimit = limit;
+          applyClamp(request.model, limit);
+          return await handler(request);
+        }
+
+        throw error;
+      }
     },
   });
 }
