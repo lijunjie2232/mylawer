@@ -113,7 +113,7 @@ export class ModelManager {
           provider: config.llm.modelProvider as 'openai' | 'anthropic',
           baseUrl: config.llm.baseUrl,
           apiKey: config.llm.apiKey || undefined,
-          maxTokens: config.llm.maxTokens,
+          maxTokens: this.resolveModelMaxTokens(model, config.llm.maxTokens),
           temperature: config.llm.temperature,
           description: `${model.owned_by || config.llm.modelProvider} によって提供`,
           isEnabled: true
@@ -183,7 +183,7 @@ export class ModelManager {
           provider: 'openai', // OpenRouter is OpenAI compatible
           baseUrl: config.llm.freeModelBaseUrl,
           apiKey: config.llm.apiKey || undefined,
-          maxTokens: config.llm.maxTokens,
+          maxTokens: this.resolveModelMaxTokens(model, config.llm.maxTokens),
           temperature: config.llm.temperature,
           description: model.description || `由 ${model.architecture?.modality || 'OpenRouter'} 提供 (免费)`,
           isEnabled: true
@@ -201,6 +201,26 @@ export class ModelManager {
       });
       this.initializeFallbackModels();
     }
+  }
+
+  /**
+   * サーバーが返すモデル別の最大出力トークン数があれば、設定値をその上限以下にクランプする
+   */
+  private resolveModelMaxTokens(rawModel: any, configuredMaxTokens: number): number {
+    const candidates = [
+      rawModel?.max_output_tokens,
+      rawModel?.max_completion_tokens,
+      rawModel?.top_provider?.max_completion_tokens,
+      rawModel?.limits?.max_output_tokens,
+      rawModel?.endpoint?.max_completion_tokens,
+    ];
+    for (const candidate of candidates) {
+      const limit = Number(candidate);
+      if (Number.isFinite(limit) && limit > 0) {
+        return Math.min(configuredMaxTokens, Math.floor(limit));
+      }
+    }
+    return configuredMaxTokens;
   }
 
   /**

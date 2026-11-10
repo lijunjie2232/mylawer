@@ -52,6 +52,11 @@ const envSchema = z.object({
   // デフォルト管理者アカウント
   DEFAULT_ADMIN_EMAIL: z.string().email().default('admin@example.com'),
   DEFAULT_ADMIN_PASSWORD: z.string().min(8).default('Admin123!@#'),
+
+  // ファイル添付設定
+  ATTACHMENT_DIR: z.string().optional(),
+  ATTACHMENT_MAX_FILE_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024), // 10 MiB
+  ATTACHMENT_MAX_FILES_PER_MESSAGE: z.coerce.number().int().positive().default(5),
 });
 
 // 検証および設定のエクスポート
@@ -107,6 +112,11 @@ export const config = {
     sessionTokenExpiresIn: env.SESSION_TOKEN_EXPIRES_IN,
     defaultAdminEmail: env.DEFAULT_ADMIN_EMAIL,
     defaultAdminPassword: env.DEFAULT_ADMIN_PASSWORD,
+  },
+  attachments: {
+    dir: env.ATTACHMENT_DIR,
+    maxFileBytes: env.ATTACHMENT_MAX_FILE_BYTES,
+    maxFilesPerMessage: env.ATTACHMENT_MAX_FILES_PER_MESSAGE,
   },
 };
 
