@@ -31,7 +31,15 @@ import { DatabaseService } from './services/databaseService.js';
 import userRoutes from './routes/userRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import chatRoutes from './routes/chatRoutes.js';
+import attachmentRoutes from './routes/attachmentRoutes.js';
 import { optionalAuth } from './middleware/authMiddleware.js';
+import { FileUploadService } from './attachments/fileUploadService.js';
+import { LocalAttachmentStore } from './attachments/attachmentStore.js';
+import { buildModelInputWithAttachments } from './attachments/promptProjection.js';
+import { isAttachmentError } from './attachments/types.js';
+import type { FileAttachmentRef } from './attachments/types.js';
+
+const DEFAULT_ATTACHMENT_PROMPT = '添付ファイルの内容を法的な観点から分析してください。';
 
 export class Server {
   private app: Application;
@@ -330,26 +338,56 @@ export class Server {
      */
     this.app.post('/api/legal/query/stream', optionalAuth, async (req: any, res: Response): Promise<void> => {
       try {
-        const { question, model, sessionId, continue: isContinue, retry }: LegalQueryRequest & {
+        const { question, model, sessionId, continue: isContinue, retry, attachmentReceiptIds }: LegalQueryRequest & {
           sessionId?: string;
           continue?: boolean;
           retry?: boolean;
         } = req.body;
         const userId = req.user?.userId;
+        const receiptIds = Array.isArray(attachmentReceiptIds)
+          ? attachmentReceiptIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+          : [];
+        const trimmedQuestion = typeof question === 'string' ? question.trim() : '';
 
-        if (!isContinue && (!question || typeof question !== 'string')) {
+        if (!isContinue && !trimmedQuestion && receiptIds.length === 0) {
           res.status(400).json({
             success: false,
-            error: 'Invalid request: question is required and must be a string'
+            error: 'Invalid request: question or attachmentReceiptIds is required'
           } as LegalQueryResponse);
           return;
         }
 
+        let admittedAttachments: FileAttachmentRef[] = [];
+        if (!isContinue && !retry && receiptIds.length > 0) {
+          if (!sessionId) {
+            res.status(400).json({
+              success: false,
+              error: 'sessionId is required when sending attachments'
+            } as LegalQueryResponse);
+            return;
+          }
+          try {
+            admittedAttachments = FileUploadService.getInstance().admitReceipts(sessionId, receiptIds, userId);
+          } catch (attachErr) {
+            if (isAttachmentError(attachErr)) {
+              res.status(attachErr.statusCode).json({
+                success: false,
+                error: attachErr.message,
+              } as LegalQueryResponse);
+              return;
+            }
+            throw attachErr;
+          }
+        }
+
+        const effectiveQuestion = trimmedQuestion || (admittedAttachments.length > 0 ? DEFAULT_ATTACHMENT_PROMPT : '');
+
         Logger.info('法律相談流式リクエストを受信', {
-          question: question ? question.substring(0, 100) + '...' : '(continuation)',
+          question: effectiveQuestion ? effectiveQuestion.substring(0, 100) + '...' : '(continuation)',
           model: model || 'default',
           sessionId: sessionId || 'none',
           userId: userId || 'anonymous',
+          attachmentCount: admittedAttachments.length,
           resume: isContinue ? 'continue' : retry ? 'retry' : undefined,
         });
 
@@ -384,14 +422,26 @@ export class Server {
           // 継続・再試行ではユーザー発話を追加しない（保存済みの文脈から再開する）
           const chat = isContinue || retry
             ? await this.legalChatService.prepareResume({ userId, sessionId, model })
-            : await this.legalChatService.prepareChat({ userId, sessionId, question, model });
+            : await this.legalChatService.prepareChat({
+                userId,
+                sessionId,
+                question: effectiveQuestion,
+                model,
+                attachments: admittedAttachments,
+              });
           const prepareMs = Date.now() - requestStartedAt;
 
           const input = isContinue
             ? null
             : retry
-              ? `前回の回答が正常に完了しませんでした。改めて次の質問に回答してください。\n\n${question}`
-              : question;
+              ? `前回の回答が正常に完了しませんでした。改めて次の質問に回答してください。\n\n${effectiveQuestion}`
+              : admittedAttachments.length > 0
+                ? await buildModelInputWithAttachments(
+                    effectiveQuestion,
+                    admittedAttachments,
+                    ref => LocalAttachmentStore.getInstance().readExtractedText(ref.attachmentId, ref.name)
+                  )
+                : effectiveQuestion;
 
           // 生成完了前に中断されても再開できるよう、セッション ID は最初に通知する
           send({ type: 'session', sessionId: chat.sessionId, turn: chat.turn, timestamp: new Date().toISOString() });
@@ -535,27 +585,70 @@ export class Server {
      */
     this.app.post('/api/legal/query', optionalAuth, async (req: any, res: Response): Promise<void> => {
       try {
-        const { question, model, sessionId }: LegalQueryRequest & { sessionId?: string } = req.body;
+        const { question, model, sessionId, attachmentReceiptIds }: LegalQueryRequest & { sessionId?: string } = req.body;
         const userId = req.user?.userId;
+        const receiptIds = Array.isArray(attachmentReceiptIds)
+          ? attachmentReceiptIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+          : [];
+        const trimmedQuestion = typeof question === 'string' ? question.trim() : '';
 
-        if (!question || typeof question !== 'string') {
+        if (!trimmedQuestion && receiptIds.length === 0) {
           res.status(400).json({
             success: false,
-            error: 'Invalid request: question is required and must be a string'
+            error: 'Invalid request: question or attachmentReceiptIds is required'
           } as LegalQueryResponse);
           return;
         }
 
+        let admittedAttachments: FileAttachmentRef[] = [];
+        if (receiptIds.length > 0) {
+          if (!sessionId) {
+            res.status(400).json({
+              success: false,
+              error: 'sessionId is required when sending attachments'
+            } as LegalQueryResponse);
+            return;
+          }
+          try {
+            admittedAttachments = FileUploadService.getInstance().admitReceipts(sessionId, receiptIds, userId);
+          } catch (attachErr) {
+            if (isAttachmentError(attachErr)) {
+              res.status(attachErr.statusCode).json({
+                success: false,
+                error: attachErr.message,
+              } as LegalQueryResponse);
+              return;
+            }
+            throw attachErr;
+          }
+        }
+
+        const effectiveQuestion = trimmedQuestion || DEFAULT_ATTACHMENT_PROMPT;
+
         Logger.info('法律相談リクエストを受信', {
-          question: question.substring(0, 100) + '...',
+          question: effectiveQuestion.substring(0, 100) + '...',
           model: model || 'default',
           sessionId: sessionId || 'none',
-          userId: userId || 'anonymous'
+          userId: userId || 'anonymous',
+          attachmentCount: admittedAttachments.length,
         });
 
-        const chat = await this.legalChatService.prepareChat({ userId, sessionId, question, model });
+        const chat = await this.legalChatService.prepareChat({
+          userId,
+          sessionId,
+          question: effectiveQuestion,
+          model,
+          attachments: admittedAttachments,
+        });
+        const modelInput = admittedAttachments.length > 0
+          ? await buildModelInputWithAttachments(
+              effectiveQuestion,
+              admittedAttachments,
+              ref => LocalAttachmentStore.getInstance().readExtractedText(ref.attachmentId, ref.name)
+            )
+          : effectiveQuestion;
         // 同期 API も同じイベント列を消費し、セッションログを残す
-        const stream = await chat.agent.getStream(question, chat.sessionId, { turn: chat.turn });
+        const stream = await chat.agent.getStream(modelInput, chat.sessionId, { turn: chat.turn });
         let answer = '';
         let sawDelta = false;
         let errorMessage = '';
@@ -583,7 +676,7 @@ export class Server {
 
         const response: LegalQueryResponse = {
           success: true,
-          question,
+          question: effectiveQuestion,
           answer,
           modelUsed: chat.agent.getModelName(),
           sessionId: chat.sessionId,
@@ -751,6 +844,7 @@ export class Server {
         // MemorySaverManager を使用してセッションをクリア
         const memoryManager = MemorySaverManager.getInstance();
         await memoryManager.clearSession(sessionId);
+        FileUploadService.getInstance().clearSession(sessionId);
         
         Logger.info('セッションクリア成功', { sessionId });
         
@@ -798,6 +892,7 @@ export class Server {
           'POST /webhook': 'LINE Bot webhook',
           'POST /api/legal/query': '法律問題相談（同期レスポンス）',
           'POST /api/legal/query/stream': '法律問題相談（ストリーミングレスポンス）',
+          'POST /api/attachments/upload': '添付ファイルアップロード（テキスト系・埋め込みテキストPDF）',
           'GET /api/docs': 'API ドキュメント',
           // ユーザー管理関連エンドポイント
           'POST /api/user/signup': 'ユーザー登録',
@@ -818,6 +913,7 @@ export class Server {
     this.app.use('/api/user', userRoutes);
     this.app.use('/api/admin', adminRoutes);
     this.app.use('/api/chat', chatRoutes);
+    this.app.use('/api/attachments', attachmentRoutes);
     
     Logger.info('ルート設定完了');
   }
