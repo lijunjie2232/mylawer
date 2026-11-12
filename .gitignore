@@ -160,3 +160,6 @@ browser/
 
 # pnpm
 .pnpm-store
+
+# Local uploaded attachments
+data/attachments/

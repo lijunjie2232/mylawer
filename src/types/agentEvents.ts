@@ -8,6 +8,8 @@
  * Live イベント（トークン差分）は表示専用で永続化しない。
  */
 
+import type { FileAttachmentRef } from '../attachments/types.js';
+
 export type TurnStatus = 'completed' | 'aborted' | 'error';
 export type StepStatus = 'completed' | 'aborted' | 'error';
 
@@ -35,7 +37,7 @@ export interface DurableEventDataMap {
     durationMs?: number;
     usage?: TokenUsage;
   };
-  'user/message': { turn: number; text: string };
+  'user/message': { turn: number; text: string; attachments?: FileAttachmentRef[] };
   'assistant/message': { turn: number; step: number; text: string; reasoning?: string };
   'tool/call': { turn: number; step: number; callId: string; name: string; args?: unknown };
   'tool/result': {

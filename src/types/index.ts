@@ -38,9 +38,10 @@ export interface ModelListResponse {
 
 // API リクエスト/レスポンスインターフェース
 export interface LegalQueryRequest {
-  question: string;
+  question?: string;
   model?: string;
   userId?: string;
+  attachmentReceiptIds?: string[];
 }
 
 export interface LegalQueryResponse {

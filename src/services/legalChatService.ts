@@ -4,6 +4,8 @@ import { ModelManager } from '../models/modelManager.js';
 import { LegalAgent } from '../agents/legalAgent.js';
 import { SessionEventService } from './sessionEventService.js';
 import { Logger } from '../utils/logger.js';
+import { FileUploadService } from '../attachments/fileUploadService.js';
+import type { FileAttachmentRef } from '../attachments/types.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DEFAULT_TITLES = new Set(['新会话', '新しいセッション']);
@@ -13,6 +15,7 @@ export interface PrepareChatInput {
   sessionId?: string;
   question: string;
   model?: string;
+  attachments?: FileAttachmentRef[];
 }
 
 export interface PreparedChat {
@@ -50,12 +53,13 @@ export class LegalChatService {
   }
 
   public async prepareChat(input: PrepareChatInput): Promise<PreparedChat> {
-    const { userId, question, model } = input;
+    const { userId, question, model, attachments } = input;
     let sessionId = input.sessionId;
     const modelConfig = ModelManager.getInstance().resolveModel(model);
 
     // エージェント取得（キャッシュ済みなら即完了）を DB セッション解決と並列に進める
     const agentPromise = this.memoryManager.getOrCreateAgent(modelConfig);
+    const titleSeed = this.titleFrom(question, attachments);
 
     if (userId) {
       const existing = sessionId && UUID_RE.test(sessionId)
@@ -66,7 +70,7 @@ export class LegalChatService {
       const backgroundWrites: Promise<unknown>[] = [];
 
       if (!existing) {
-        const session = await this.chatService.createSession(userId, this.titleFrom(question));
+        const session = await this.chatService.createSession(userId, titleSeed);
         sessionId = session.id;
         turn = 1;
         Logger.info('Created new DB session', { userId, sessionId });
@@ -74,7 +78,7 @@ export class LegalChatService {
         turn = existing.userMessageCount + 1;
         if (!existing.title || DEFAULT_TITLES.has(existing.title)) {
           backgroundWrites.push(
-            this.chatService.updateSessionTitleDirect(sessionId!, this.titleFrom(question)).catch(error => {
+            this.chatService.updateSessionTitleDirect(sessionId!, titleSeed).catch(error => {
               Logger.warn('バックグラウンドでのセッションタイトル更新に失敗しました', {
                 sessionId,
                 error: (error as Error).message,
@@ -82,6 +86,11 @@ export class LegalChatService {
             })
           );
         }
+      }
+
+      // 確定した DB セッション ID に承認済み添付ファイルを紐づける（一時 UUID からの切替にも対応）
+      if (attachments && attachments.length > 0) {
+        FileUploadService.getInstance().registerAdmitted(sessionId!, attachments);
       }
 
       // ユーザー発話の保存とイベント追記は LLM 呼び出し開始を止めずにバックグラウンドで進める
@@ -95,7 +104,11 @@ export class LegalChatService {
 
       this.eventService.enqueue(sessionId!, {
         type: 'user/message',
-        data: { turn, text: question },
+        data: {
+          turn,
+          text: question,
+          ...(attachments && attachments.length > 0 ? { attachments } : {}),
+        },
       });
 
       const agent = await agentPromise;
@@ -117,6 +130,9 @@ export class LegalChatService {
 
     if (!sessionId) {
       sessionId = this.memoryManager.createNewSession();
+    }
+    if (attachments && attachments.length > 0) {
+      FileUploadService.getInstance().registerAdmitted(sessionId, attachments);
     }
 
     const agent = await agentPromise;
@@ -179,7 +195,15 @@ export class LegalChatService {
     await this.chatService.addMessage(chat.sessionId, { role: 'assistant', content });
   }
 
-  private titleFrom(question: string): string {
-    return question.substring(0, 30) + (question.length > 30 ? '...' : '');
+  private titleFrom(question: string, attachments?: FileAttachmentRef[]): string {
+    const trimmed = question.trim();
+    if (trimmed.length > 0) {
+      return trimmed.substring(0, 30) + (trimmed.length > 30 ? '...' : '');
+    }
+    if (attachments && attachments.length > 0) {
+      const label = `📎 ${attachments[0].name}`;
+      return label.substring(0, 30) + (label.length > 30 ? '...' : '');
+    }
+    return '新しいセッション';
   }
 }
