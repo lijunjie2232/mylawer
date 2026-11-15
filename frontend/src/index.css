@@ -66,6 +66,9 @@ body {
 .dsh-markdown {
   font-size: 0.94rem;
   line-height: 1.72;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
   word-break: break-word;
 }
 
@@ -122,6 +125,8 @@ body {
   font-weight: 500;
   text-decoration: none;
   text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .dsh-markdown a:hover {
@@ -134,6 +139,8 @@ body {
   padding: 0.14em 0.38em;
   border-radius: 5px;
   background: rgba(128, 128, 128, 0.14);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .dsh-markdown table {

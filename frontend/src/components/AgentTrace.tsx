@@ -67,6 +67,8 @@ const CodeBlock: React.FC<{ className?: string; children?: React.ReactNode }> = 
     <Box
       sx={{
         my: 1.5,
+        maxWidth: '100%',
+        minWidth: 0,
         borderRadius: '10px',
         overflow: 'hidden',
         border: '1px solid',
@@ -333,6 +335,8 @@ const ReasoningRow: React.FC<{
         <Box
           sx={{
             position: 'relative',
+            minWidth: 0,
+            maxWidth: '100%',
             ml: 0.75,
             pl: 2,
             pr: 1,
@@ -472,6 +476,8 @@ const ToolRow: React.FC<{
       <Collapse in={open && hasDetail}>
         <Box
           sx={{
+            minWidth: 0,
+            maxWidth: '100%',
             ml: 0.75,
             pl: 2,
             pr: 0.5,
@@ -486,6 +492,8 @@ const ToolRow: React.FC<{
           {argsText && (
             <Box
               sx={{
+                minWidth: 0,
+                maxWidth: '100%',
                 borderRadius: '8px',
                 border: '1px solid',
                 borderColor: 'divider',
@@ -524,6 +532,7 @@ const ToolRow: React.FC<{
                   fontSize: '0.73rem',
                   lineHeight: 1.55,
                   whiteSpace: 'pre-wrap',
+                  overflowWrap: 'anywhere',
                   wordBreak: 'break-word',
                   color: 'text.primary',
                 }}
@@ -536,6 +545,8 @@ const ToolRow: React.FC<{
           {item.result && (
             <Box
               sx={{
+                minWidth: 0,
+                maxWidth: '100%',
                 borderRadius: '8px',
                 border: '1px solid',
                 borderColor: item.status === 'error' ? 'error.main' : 'divider',
@@ -581,6 +592,7 @@ const ToolRow: React.FC<{
                   fontSize: '0.73rem',
                   lineHeight: 1.55,
                   whiteSpace: 'pre-wrap',
+                  overflowWrap: 'anywhere',
                   wordBreak: 'break-word',
                   color: item.status === 'error' ? 'error.main' : 'text.secondary',
                 }}
@@ -974,14 +986,25 @@ const AgentTrace: React.FC<AgentTraceProps> = ({
           key={index}
           severity="error"
           variant="outlined"
-          sx={{ my: 1, py: 0.25, px: 1.5, borderRadius: '10px', '& .MuiAlert-message': { fontSize: '0.84rem' } }}
+          sx={{
+            my: 1,
+            py: 0.25,
+            px: 1.5,
+            borderRadius: '10px',
+            '& .MuiAlert-message': {
+              fontSize: '0.84rem',
+              minWidth: 0,
+              overflowWrap: 'anywhere',
+              wordBreak: 'break-word',
+            },
+          }}
         >
           {item.message}
         </Alert>
       )
     }
     return (
-      <Box key={index} sx={{ '& > :last-child': { mb: 0 }, my: 0.75 }}>
+      <Box key={index} sx={{ minWidth: 0, maxWidth: '100%', '& > :last-child': { mb: 0 }, my: 0.75 }}>
         <Markdown>{item.text}</Markdown>
       </Box>
     )
@@ -1022,6 +1045,8 @@ const AgentTrace: React.FC<AgentTraceProps> = ({
             <Collapse in={processOpen}>
               <Box
                 sx={{
+                  minWidth: 0,
+                  maxWidth: '100%',
                   mb: 1.5,
                   p: 1.25,
                   borderRadius: '12px',
