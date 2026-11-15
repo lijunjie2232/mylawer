@@ -1,6 +1,7 @@
-import React from 'react'
+import React, { useRef, useState } from 'react'
 import {
   Box,
+  CircularProgress,
   IconButton,
   InputBase,
   MenuItem,
@@ -10,12 +11,17 @@ import {
 } from '@mui/material'
 import {
   ArrowUpward as SendIcon,
+  AttachFile as AttachIcon,
   AutoAwesome as ModelIcon,
   BoltOutlined as SendNowIcon,
   Close as CloseIcon,
+  DescriptionOutlined as FileTextIcon,
   EditOutlined as EditIcon,
+  ErrorOutline as ErrorIcon,
+  PictureAsPdfOutlined as PdfIcon,
   Stop as StopIcon,
 } from '@mui/icons-material'
+import { formatFileSize, type FileAttachmentRef } from '../utils/agentTrace'
 
 export interface ModelOption {
   name: string
@@ -26,10 +32,29 @@ export interface ModelOption {
   isHealthy?: boolean
 }
 
+export interface StagedAttachmentRef {
+  receiptId: string
+  file: FileAttachmentRef
+}
+
+export interface DraftAttachment {
+  id: string
+  name: string
+  bytes: number
+  status: 'uploading' | 'ready' | 'error'
+  receiptId?: string
+  file?: FileAttachmentRef
+  error?: string
+}
+
 export interface QueuedItem {
   id: string
   text: string
+  attachments?: StagedAttachmentRef[]
 }
+
+const ACCEPTED_FILE_TYPES =
+  '.txt,.text,.md,.markdown,.csv,.tsv,.json,.jsonl,.xml,.html,.htm,.yaml,.yml,.log,.ini,.conf,.cfg,.tex,.rtf,.pdf,text/plain,text/markdown,text/csv,application/json,application/pdf'
 
 interface ChatComposerProps {
   value: string
@@ -45,12 +70,15 @@ interface ChatComposerProps {
   onRemoveQueued: (id: string) => void
   onEditQueued: (item: QueuedItem) => void
   onSendQueuedNow: (item: QueuedItem) => void
+  attachments: DraftAttachment[]
+  onAddFiles: (files: FileList | File[]) => void
+  onRemoveAttachment: (id: string) => void
   inputRef?: React.RefObject<HTMLTextAreaElement | null>
 }
 
 /**
- * deepseek-harness の会話コンポーザー + QueueDock に倣った入力カード。
- * 実行中は QueueDock から「今すぐ送信（中断して切替）」「入力欄に戻す」「削除」が可能。
+ * deepseek-harness の会話コンポーザー + QueueDock + 添付ファイルチップに倣った入力カード。
+ * テキスト系ファイルおよび埋め込みテキスト PDF のドラッグ＆ドロップ / ファイル選択に対応。
  */
 const ChatComposer: React.FC<ChatComposerProps> = ({
   value,
@@ -66,9 +94,46 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
   onRemoveQueued,
   onEditQueued,
   onSendQueuedNow,
+  attachments,
+  onAddFiles,
+  onRemoveAttachment,
   inputRef,
 }) => {
-  const canSend = value.trim().length > 0
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
+
+  const hasUploading = attachments.some(a => a.status === 'uploading')
+  const hasReadyAttachment = attachments.some(a => a.status === 'ready')
+  const canSend = !hasUploading && (value.trim().length > 0 || hasReadyAttachment)
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      onAddFiles(e.target.files)
+    }
+    e.target.value = ''
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!isDragging) setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+    setIsDragging(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      onAddFiles(e.dataTransfer.files)
+    }
+  }
 
   return (
     <Box
@@ -121,7 +186,9 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                 }}
               >
                 <Typography variant="body2" noWrap sx={{ flexGrow: 1, minWidth: 0, fontSize: '0.82rem' }}>
-                  {item.text}
+                  {item.attachments && item.attachments.length > 0
+                    ? `[添付 ${item.attachments.length}件] ${item.text || item.attachments[0].file.name}`
+                    : item.text}
                 </Typography>
                 <Tooltip title="現在の生成を停止して今すぐ送信">
                   <IconButton
@@ -163,17 +230,22 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
       <Box
         component="form"
         onSubmit={onSubmit}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         sx={{
           position: 'relative',
           borderRadius: '20px',
           border: '1px solid',
-          borderColor: 'divider',
-          bgcolor: 'background.paper',
+          borderColor: isDragging ? 'primary.main' : 'divider',
+          bgcolor: isDragging
+            ? theme => (theme.palette.mode === 'dark' ? 'rgba(96,143,255,0.08)' : 'rgba(59,108,245,0.04)')
+            : 'background.paper',
           boxShadow: theme =>
             theme.palette.mode === 'dark'
               ? '0 2px 12px rgba(0,0,0,0.32)'
               : '0 2px 14px rgba(15,23,42,0.06)',
-          transition: 'border-color 140ms ease, box-shadow 140ms ease',
+          transition: 'border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease',
           '&:focus-within': {
             borderColor: 'primary.main',
             boxShadow: theme =>
@@ -189,6 +261,106 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
           gap: 1,
         }}
       >
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept={ACCEPTED_FILE_TYPES}
+          onChange={handleFileChange}
+          style={{ display: 'none' }}
+          aria-label="ファイルを添付"
+        />
+
+        {/* 添付ファイルチップ一覧 */}
+        {attachments.length > 0 && (
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+            {attachments.map(att => {
+              const isPdf = att.name.toLowerCase().endsWith('.pdf') || att.file?.mediaType === 'application/pdf'
+              const isError = att.status === 'error'
+              const isUploading = att.status === 'uploading'
+              const metaParts = [
+                formatFileSize(att.file?.bytes ?? att.bytes),
+                ...(att.file?.pageCount ? [`${att.file.pageCount}P`] : []),
+              ].join(' · ')
+
+              return (
+                <Tooltip
+                  key={att.id}
+                  title={isError ? att.error || 'アップロードに失敗しました' : `${att.name} (${metaParts})`}
+                >
+                  <Box
+                    sx={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 0.65,
+                      pl: 1,
+                      pr: 0.5,
+                      py: 0.45,
+                      maxWidth: 250,
+                      borderRadius: '10px',
+                      border: '1px solid',
+                      borderColor: isError ? 'error.main' : 'divider',
+                      bgcolor: theme =>
+                        isError
+                          ? theme.palette.mode === 'dark'
+                            ? 'rgba(244,67,54,0.12)'
+                            : 'rgba(244,67,54,0.06)'
+                          : theme.palette.mode === 'dark'
+                            ? 'rgba(255,255,255,0.04)'
+                            : 'rgba(15,23,42,0.03)',
+                    }}
+                  >
+                    {isUploading ? (
+                      <CircularProgress size={14} sx={{ flex: 'none' }} />
+                    ) : isError ? (
+                      <ErrorIcon sx={{ fontSize: 15, color: 'error.main', flex: 'none' }} />
+                    ) : isPdf ? (
+                      <PdfIcon sx={{ fontSize: 16, color: 'error.main', flex: 'none' }} />
+                    ) : (
+                      <FileTextIcon sx={{ fontSize: 16, color: 'primary.main', flex: 'none' }} />
+                    )}
+
+                    <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                      <Typography
+                        variant="caption"
+                        noWrap
+                        sx={{
+                          fontSize: '0.76rem',
+                          fontWeight: 500,
+                          lineHeight: 1.25,
+                          color: isError ? 'error.main' : 'text.primary',
+                        }}
+                      >
+                        {att.name}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        noWrap
+                        sx={{
+                          fontSize: '0.68rem',
+                          lineHeight: 1.2,
+                          color: isError ? 'error.main' : 'text.secondary',
+                        }}
+                      >
+                        {isUploading ? '解析・アップロード中...' : isError ? att.error || 'エラー' : metaParts}
+                      </Typography>
+                    </Box>
+
+                    <IconButton
+                      size="small"
+                      aria-label={`${att.name} を削除`}
+                      onClick={() => onRemoveAttachment(att.id)}
+                      sx={{ p: 0.25, ml: 0.25, color: 'text.secondary', '&:hover': { color: 'text.primary' } }}
+                    >
+                      <CloseIcon sx={{ fontSize: 14 }} />
+                    </IconButton>
+                  </Box>
+                </Tooltip>
+              )
+            })}
+          </Box>
+        )}
+
         <InputBase
           fullWidth
           multiline
@@ -198,14 +370,16 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder={
-            isLoading
-              ? '次の質問を入力すると送信待ちキューに追加されます...'
-              : '法律相談のご質問を入力してください...'
+            isDragging
+              ? 'ここにファイルをドロップして添付...'
+              : isLoading
+                ? '次の質問を入力すると送信待ちキューに追加されます...'
+                : '法律相談のご質問を入力、または契約書・PDF ファイルを添付してください...'
           }
           onKeyDown={e => {
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault()
-              onSubmit(e)
+              if (canSend) onSubmit(e)
             }
           }}
           sx={{
@@ -219,7 +393,32 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
 
         {/* 下段ツールバー */}
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+            <Tooltip title="ファイルを添付（テキスト系ファイル・埋め込みテキストPDF）">
+              <IconButton
+                type="button"
+                size="small"
+                aria-label="ファイルを添付"
+                onClick={() => fileInputRef.current?.click()}
+                sx={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: '10px',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  color: 'text.secondary',
+                  bgcolor: theme =>
+                    theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+                  '&:hover': {
+                    color: 'primary.main',
+                    borderColor: 'primary.main',
+                  },
+                }}
+              >
+                <AttachIcon sx={{ fontSize: 16 }} />
+              </IconButton>
+            </Tooltip>
+
             <Box
               sx={{
                 display: 'inline-flex',
@@ -232,7 +431,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                 borderColor: 'divider',
                 bgcolor: theme =>
                   theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
-                maxWidth: { xs: 190, sm: 260 },
+                maxWidth: { xs: 170, sm: 250 },
               }}
             >
               <ModelIcon sx={{ fontSize: 14, color: 'text.secondary', flex: 'none' }} />
@@ -318,7 +517,7 @@ const ChatComposer: React.FC<ChatComposerProps> = ({
                 </IconButton>
               </Tooltip>
             ) : (
-              <Tooltip title="送信 (Enter)">
+              <Tooltip title={hasUploading ? 'アップロード完了を待っています...' : '送信 (Enter)'}>
                 <span>
                   <IconButton
                     type="submit"

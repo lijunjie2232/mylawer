@@ -18,10 +18,12 @@ import {
   Balance as ScaleIcon,
   Check as CheckIcon,
   ContentCopy as CopyIcon,
+  DescriptionOutlined as FileTextIcon,
   EditOutlined as EditIcon,
   Gavel as LawIcon,
   KeyboardArrowDown as ScrollDownIcon,
   Menu as MenuIcon,
+  PictureAsPdfOutlined as PdfIcon,
   UnfoldLess as CollapseAllIcon,
   UnfoldMore as ExpandAllIcon,
   VisibilityOutlined as DetailIcon,
@@ -29,13 +31,22 @@ import {
 import AuthDialog from './components/AuthDialog'
 import SidebarPanel from './components/SidebarPanel'
 import AgentTrace, { type ExpandSignal } from './components/AgentTrace'
-import ChatComposer, { type ModelOption, type QueuedItem } from './components/ChatComposer'
+import ChatComposer, {
+  type DraftAttachment,
+  type ModelOption,
+  type QueuedItem,
+  type StagedAttachmentRef,
+} from './components/ChatComposer'
 import {
   applyAgentEvent,
   buildMessages,
   extractTurnMeta,
+  formatFileSize,
 } from './utils/agentTrace'
 import type { ChatMessage, HistoryMessage } from './utils/agentTrace'
+
+const MAX_FILES_PER_MESSAGE = 5
+const DEFAULT_ATTACHMENT_PROMPT = '添付ファイルの内容を法的な観点から分析してください。'
 
 const EXAMPLE_GROUPS: { category: string; question: string }[] = [
   { category: '刑法', question: '窃盗罪の定義と成立要件を教えてください。' },
@@ -71,6 +82,55 @@ const UserMessageRow: React.FC<{
         '&:hover .user-msg-actions': { opacity: 1 },
       }}
     >
+      {message.attachments && message.attachments.length > 0 && (
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'flex-end',
+            gap: 0.65,
+            mb: 0.75,
+            maxWidth: { xs: '88%', sm: '76%' },
+          }}
+        >
+          {message.attachments.map(att => {
+            const isPdf = att.mediaType === 'application/pdf' || att.name.toLowerCase().endsWith('.pdf')
+            const meta = [
+              formatFileSize(att.bytes),
+              ...(att.pageCount ? [`${att.pageCount}P`] : []),
+            ].join(' · ')
+            return (
+              <Box
+                key={att.attachmentId + att.name}
+                sx={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 0.6,
+                  px: 1.1,
+                  py: 0.45,
+                  borderRadius: '10px',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: 'background.paper',
+                  maxWidth: 260,
+                }}
+              >
+                {isPdf ? (
+                  <PdfIcon sx={{ fontSize: 15, color: 'error.main', flex: 'none' }} />
+                ) : (
+                  <FileTextIcon sx={{ fontSize: 15, color: 'primary.main', flex: 'none' }} />
+                )}
+                <Typography variant="caption" noWrap sx={{ fontWeight: 500, fontSize: '0.76rem' }}>
+                  {att.name}
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.68rem', flex: 'none' }}>
+                  {meta}
+                </Typography>
+              </Box>
+            )
+          })}
+        </Box>
+      )}
       <Box
         sx={{
           maxWidth: { xs: '88%', sm: '76%' },
@@ -84,7 +144,9 @@ const UserMessageRow: React.FC<{
           borderColor: theme =>
             theme.palette.mode === 'dark' ? 'rgba(96, 143, 255, 0.24)' : 'rgba(59, 108, 245, 0.14)',
           whiteSpace: 'pre-wrap',
+          overflowWrap: 'anywhere',
           wordBreak: 'break-word',
+          minWidth: 0,
           fontSize: '0.94rem',
           lineHeight: 1.6,
         }}
@@ -204,6 +266,7 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const [demoWarningOpen, setDemoWarningOpen] = useState(true)
   const [pendingQueue, setPendingQueue] = useState<QueuedItem[]>([])
+  const [draftAttachments, setDraftAttachments] = useState<DraftAttachment[]>([])
   const [showScrollButton, setShowScrollButton] = useState(false)
 
   // DeepSeek Harness UI コントロール状態
@@ -221,6 +284,7 @@ const App: React.FC = () => {
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const pinnedToBottomRef = useRef<boolean>(true)
   const abortRef = useRef<AbortController | null>(null)
+  const uploadControllersRef = useRef<Map<string, AbortController>>(new Map())
 
   const prefersDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -264,6 +328,14 @@ const App: React.FC = () => {
                 borderRadius: 10,
                 textTransform: 'none',
                 fontWeight: 500,
+              },
+            },
+          },
+          MuiCollapse: {
+            styleOverrides: {
+              wrapperInner: {
+                minWidth: 0,
+                maxWidth: '100%',
               },
             },
           },
@@ -345,8 +417,17 @@ const App: React.FC = () => {
     }
   }
 
+  const clearDraftAttachments = useCallback(() => {
+    for (const ctrl of uploadControllersRef.current.values()) {
+      ctrl.abort()
+    }
+    uploadControllersRef.current.clear()
+    setDraftAttachments([])
+  }, [])
+
   const handleSelectSession = async (sid: string, title?: string) => {
     abortRef.current?.abort()
+    clearDraftAttachments()
     setSessionId(sid)
     setSessionTitle(title || '保存済みの相談')
     localStorage.setItem('sessionId', sid)
@@ -440,6 +521,7 @@ const App: React.FC = () => {
 
   const startNewSession = async () => {
     abortRef.current?.abort()
+    clearDraftAttachments()
     setPendingQueue([])
     setSessionTitle('新しい相談')
     try {
@@ -471,31 +553,133 @@ const App: React.FC = () => {
     }
   }
 
+  const handleAddFiles = async (fileList: FileList | File[]) => {
+    const incoming = Array.from(fileList)
+    if (incoming.length === 0) return
+
+    let activeSessionId = sessionId
+    if (!activeSessionId) {
+      activeSessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
+      setSessionId(activeSessionId)
+      localStorage.setItem('sessionId', activeSessionId)
+    }
+
+    const currentValidCount = draftAttachments.filter(a => a.status !== 'error').length
+    const availableSlots = Math.max(0, MAX_FILES_PER_MESSAGE - currentValidCount)
+    if (availableSlots === 0) {
+      setError(`1回のメッセージで添付できるファイルは最大 ${MAX_FILES_PER_MESSAGE} 件までです。`)
+      return
+    }
+
+    const selected = incoming.slice(0, availableSlots)
+    if (incoming.length > availableSlots) {
+      setError(`最大 ${MAX_FILES_PER_MESSAGE} 件までのため、先頭 ${availableSlots} 件のみ添付しました。`)
+    }
+
+    for (const file of selected) {
+      const id = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const controller = new AbortController()
+      uploadControllersRef.current.set(id, controller)
+
+      setDraftAttachments(prev => [
+        ...prev,
+        { id, name: file.name, bytes: file.size, status: 'uploading' },
+      ])
+
+      void (async () => {
+        try {
+          const params = new URLSearchParams({
+            sessionId: activeSessionId,
+            name: file.name,
+          })
+          const response = await fetch(`/api/attachments/upload?${params.toString()}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/octet-stream',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: file,
+            signal: controller.signal,
+          })
+
+          const data = await response.json().catch(() => null)
+          if (!response.ok || !data?.success) {
+            const msg = data?.error || `アップロードに失敗しました (HTTP ${response.status})`
+            setDraftAttachments(prev =>
+              prev.map(item => (item.id === id ? { ...item, status: 'error', error: msg } : item))
+            )
+            setError(msg)
+            return
+          }
+
+          setDraftAttachments(prev =>
+            prev.map(item =>
+              item.id === id
+                ? {
+                    ...item,
+                    status: 'ready',
+                    receiptId: data.receiptId,
+                    file: data.file,
+                  }
+                : item
+            )
+          )
+        } catch (err) {
+          if ((err as any)?.name === 'AbortError') return
+          const msg = 'ファイルのアップロード中に通信エラーが発生しました。'
+          setDraftAttachments(prev =>
+            prev.map(item => (item.id === id ? { ...item, status: 'error', error: msg } : item))
+          )
+          setError(msg)
+        } finally {
+          uploadControllersRef.current.delete(id)
+        }
+      })()
+    }
+  }
+
+  const handleRemoveAttachment = (id: string) => {
+    const ctrl = uploadControllersRef.current.get(id)
+    if (ctrl) {
+      ctrl.abort()
+      uploadControllersRef.current.delete(id)
+    }
+    setDraftAttachments(prev => prev.filter(item => item.id !== id))
+  }
+
   interface SendOptions {
     retry?: boolean
     continue?: boolean
     targetId?: string
+    attachments?: StagedAttachmentRef[]
   }
 
   const sendQuestion = async (question: string | null, options: SendOptions = {}) => {
-    const { retry = false, continue: isContinue = false, targetId } = options
-    if (!isContinue && !question) return
+    const { retry = false, continue: isContinue = false, targetId, attachments = [] } = options
+    const trimmed = question?.trim() ?? ''
+    if (!isContinue && !trimmed && attachments.length === 0) return
+
+    const effectiveQuestion = trimmed || (attachments.length > 0 ? DEFAULT_ATTACHMENT_PROMPT : '')
+    const attachmentReceiptIds = attachments.map(a => a.receiptId)
+    const attachmentRefs = attachments.map(a => a.file)
 
     setError(null)
     setIsLoading(true)
     pinnedToBottomRef.current = true
     setShowScrollButton(false)
 
-    if (!isContinue && !retry && question) {
+    if (!isContinue && !retry) {
       if (messages.length === 0) {
-        setSessionTitle(question.slice(0, 28) + (question.length > 28 ? '…' : ''))
+        const titleSource = trimmed || (attachmentRefs[0] ? `📎 ${attachmentRefs[0].name}` : effectiveQuestion)
+        setSessionTitle(titleSource.slice(0, 28) + (titleSource.length > 28 ? '…' : ''))
       }
       const userMessage: ChatMessage = {
         id: `u-${Date.now()}`,
-        content: question,
+        content: effectiveQuestion,
         sender: 'user',
         timestamp: new Date(),
         trace: [],
+        ...(attachmentRefs.length > 0 ? { attachments: attachmentRefs } : {}),
       }
       setMessages(prev => [...prev, userMessage])
     }
@@ -582,7 +766,8 @@ const App: React.FC = () => {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
-          ...(isContinue ? { continue: true } : { question }),
+          ...(isContinue ? { continue: true } : { question: effectiveQuestion }),
+          ...(attachmentReceiptIds.length > 0 ? { attachmentReceiptIds } : {}),
           retry,
           model: selectedModel,
           sessionId,
@@ -637,7 +822,7 @@ const App: React.FC = () => {
         return
       }
 
-      if (retry || isContinue || !question) {
+      if (retry || isContinue || (!effectiveQuestion && attachmentReceiptIds.length === 0)) {
         patchAssistant(msg => ({ ...msg, streaming: false, interrupted: true }))
         setError('通信に失敗しました。再試行してください。')
         return
@@ -646,7 +831,12 @@ const App: React.FC = () => {
       try {
         const response = await axios.post(
           '/api/legal/query',
-          { question, model: selectedModel, sessionId },
+          {
+            question: effectiveQuestion,
+            model: selectedModel,
+            sessionId,
+            ...(attachmentReceiptIds.length > 0 ? { attachmentReceiptIds } : {}),
+          },
           { headers: token ? { Authorization: `Bearer ${token}` } : {} }
         )
 
@@ -682,23 +872,40 @@ const App: React.FC = () => {
     if (isLoading || pendingQueue.length === 0) return
     const [next, ...rest] = pendingQueue
     setPendingQueue(rest)
-    void sendQuestion(next.text)
+    void sendQuestion(next.text, { attachments: next.attachments })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, pendingQueue])
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault()
+    if (draftAttachments.some(a => a.status === 'uploading')) return
+
     const text = inputValue.trim()
-    if (!text) return
+    const readyAttachments: StagedAttachmentRef[] = draftAttachments
+      .filter((a): a is DraftAttachment & { receiptId: string; file: NonNullable<DraftAttachment['file']> } =>
+        a.status === 'ready' && Boolean(a.receiptId) && Boolean(a.file)
+      )
+      .map(a => ({ receiptId: a.receiptId, file: a.file }))
+
+    if (!text && readyAttachments.length === 0) return
 
     if (isLoading) {
-      setPendingQueue(prev => [...prev, { id: `q-${Date.now()}-${prev.length}`, text }])
+      setPendingQueue(prev => [
+        ...prev,
+        {
+          id: `q-${Date.now()}-${prev.length}`,
+          text,
+          ...(readyAttachments.length > 0 ? { attachments: readyAttachments } : {}),
+        },
+      ])
       setInputValue('')
+      setDraftAttachments([])
       return
     }
 
     setInputValue('')
-    void sendQuestion(text)
+    setDraftAttachments([])
+    void sendQuestion(text, { attachments: readyAttachments })
   }
 
   const handleStop = () => {
@@ -742,6 +949,18 @@ const App: React.FC = () => {
   const handleEditQueued = (item: QueuedItem) => {
     setPendingQueue(prev => prev.filter(q => q.id !== item.id))
     setInputValue(item.text)
+    if (item.attachments && item.attachments.length > 0) {
+      setDraftAttachments(
+        item.attachments.map((att, idx) => ({
+          id: `restored-${Date.now()}-${idx}`,
+          name: att.file.name,
+          bytes: att.file.bytes,
+          status: 'ready',
+          receiptId: att.receiptId,
+          file: att.file,
+        }))
+      )
+    }
     inputRef.current?.focus()
   }
 
@@ -1148,6 +1367,9 @@ const App: React.FC = () => {
             onRemoveQueued={id => setPendingQueue(prev => prev.filter(q => q.id !== id))}
             onEditQueued={handleEditQueued}
             onSendQueuedNow={handleSendQueuedNow}
+            attachments={draftAttachments}
+            onAddFiles={handleAddFiles}
+            onRemoveAttachment={handleRemoveAttachment}
             inputRef={inputRef}
           />
         </Box>

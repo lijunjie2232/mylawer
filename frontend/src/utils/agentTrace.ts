@@ -49,12 +49,28 @@ export interface TurnMeta {
   usage?: TokenUsage
 }
 
+export interface FileAttachmentRef {
+  attachmentId: string
+  name: string
+  bytes: number
+  mediaType: string
+  pageCount?: number
+  charCount?: number
+}
+
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 export interface ChatMessage {
   id: string
   content: string
   sender: 'user' | 'assistant'
   timestamp: Date
   trace: TraceItem[]
+  attachments?: FileAttachmentRef[]
   streaming?: boolean
   /** 中断・失敗で終わったターン（「停止しました」表示と再試行・継続の判定に使う） */
   interrupted?: boolean
@@ -274,12 +290,18 @@ function foldEvents(events: StoredEvent[]): ChatMessage[] {
   for (const event of events) {
     if (event.type === 'user/message') {
       const turn = event.data?.turn ?? out.length
+      const rawAttachments = Array.isArray(event.data?.attachments)
+        ? (event.data.attachments as FileAttachmentRef[]).filter(
+            a => a && typeof a.attachmentId === 'string' && typeof a.name === 'string'
+          )
+        : undefined
       out.push({
         id: `event-user-${turn}`,
         sender: 'user',
         content: event.data?.text ?? '',
         timestamp: new Date(event.createdAt),
         trace: [],
+        ...(rawAttachments && rawAttachments.length > 0 ? { attachments: rawAttachments } : {}),
       })
       assistant = {
         id: `event-assistant-${turn}`,
