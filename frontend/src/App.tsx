@@ -68,7 +68,7 @@ const UserMessageRow: React.FC<{
     navigator.clipboard?.writeText(message.content).then(() => {
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1800)
-    }).catch(() => {})
+    }).catch(() => { })
   }
 
   return (
@@ -616,11 +616,11 @@ const App: React.FC = () => {
             prev.map(item =>
               item.id === id
                 ? {
-                    ...item,
-                    status: 'ready',
-                    receiptId: data.receiptId,
-                    file: data.file,
-                  }
+                  ...item,
+                  status: 'ready',
+                  receiptId: data.receiptId,
+                  file: data.file,
+                }
                 : item
             )
           )
@@ -1413,22 +1413,39 @@ const App: React.FC = () => {
               '& .MuiAlert-message': { width: '100%' },
             }}
           >
-            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.25 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
               デモ環境についてのお知らせ
             </Typography>
-            <Typography variant="caption" color="text.secondary" component="div" sx={{ lineHeight: 1.6 }}>
-              無料モデル利用のため応答に時間がかかる場合があります。会話履歴の保存にはログインが必要です（プライベート構築:{' '}
-              <a
-                href="https://github.com/lijunjie2232/mylawer"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: theme.palette.primary.main }}
-              >
-                GitHub
-              </a>
-              ）。
-              demoのため、最初から起動するので時間が30秒ぐらいかかります。
-            </Typography>
+            <Box
+              component="ul"
+              sx={{
+                m: 0,
+                pl: 2.25,
+                color: 'text.secondary',
+                fontSize: '0.75rem',
+                lineHeight: 1.6,
+                '& li + li': { mt: 0.25 },
+              }}
+            >
+              <li>
+                無料モデル利用のため応答に時間がかかる場合があります。会話履歴の保存にはログインが必要です。
+              </li>
+              <li>
+                個人情報や機密情報はアップロード・入力しないでください。本デモ環境では質問内容や送信データの保護について責任を負いかねます（プライベート構築:{' '}
+                <a
+                  href="https://github.com/lijunjie2232/mylawer"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: theme.palette.primary.main }}
+                >
+                  GitHub
+                </a>
+                ）。
+              </li>
+              <li>
+                現在このデモ環境にはOCRサーバーがないため、アップロードできるファイルはテキストベースのファイル（テキスト埋め込みPDFを含む）のみ対応しています。
+              </li>
+            </Box>
           </Alert>
         </Snackbar>
       </Box>
