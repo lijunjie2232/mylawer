@@ -1,15 +1,22 @@
 import { LineBotClient } from '@line/bot-sdk';
 import { config } from '../config/environment.js';
-import { LegalAgent } from '../agents/legalAgent.js';
+import { ModelManager } from '../models/modelManager.js';
+import { MemorySaverManager } from '../memory/memorySaverManager.js';
 import { Logger } from '../utils/logger.js';
 import {
   LineWebhookEvent,
   LineWebhookBody
 } from '../types/server.js';
 
+const VERIFY_DUMMY_REPLY_TOKENS = new Set([
+  '00000000000000000000000000000000',
+  'ffffffffffffffffffffffffffffffff',
+]);
+
 export class LineBotHandler {
   private client: LineBotClient | null;
-  private legalAgent: LegalAgent;
+  private modelManager: ModelManager;
+  private memoryManager: MemorySaverManager;
 
   constructor() {
     // アクセストークン未設定時はクライアントを作らない（起動は継続）
@@ -17,8 +24,9 @@ export class LineBotHandler {
       ? LineBotClient.fromChannelAccessToken({ channelAccessToken: config.line.accessToken })
       : null;
 
-    this.legalAgent = new LegalAgent();
-    
+    this.modelManager = ModelManager.getInstance();
+    this.memoryManager = MemorySaverManager.getInstance();
+
     Logger.info('LINE Bot ハンドラーの初期化が完了しました', {
       hasChannelSecret: !!config.line.channelSecret,
       hasAccessToken: !!config.line.accessToken
@@ -30,7 +38,7 @@ export class LineBotHandler {
    */
   async handleWebhook(body: LineWebhookBody): Promise<void> {
     if (!body.events || body.events.length === 0) {
-      Logger.warn('空の webhook イベントを受信しました');
+      Logger.debug('空の webhook イベントを受信しました（Webhook 検証等）');
       return;
     }
 
@@ -47,11 +55,18 @@ export class LineBotHandler {
    */
   private async handleEvent(event: LineWebhookEvent): Promise<void> {
     try {
-      Logger.debug('イベントを処理中', { 
+      Logger.debug('イベントを処理中', {
         eventType: event.type,
         sourceType: event.source?.type,
-        userId: event.source?.userId 
+        userId: event.source?.userId
       });
+
+      if (event.replyToken && VERIFY_DUMMY_REPLY_TOKENS.has(event.replyToken)) {
+        Logger.debug('LINE Webhook 検証用のダミーイベントをスキップしました', {
+          eventType: event.type,
+        });
+        return;
+      }
 
       switch (event.type) {
         case 'message':
@@ -70,7 +85,7 @@ export class LineBotHandler {
           Logger.debug('未処理のイベントタイプ', { eventType: event.type });
       }
     } catch (error) {
-      Logger.error('イベント処理中にエラーが発生しました', { 
+      Logger.error('イベント処理中にエラーが発生しました', {
         error,
         eventType: event.type,
         userId: event.source?.userId
@@ -82,18 +97,20 @@ export class LineBotHandler {
    * メッセージイベントを処理
    */
   private async handleMessageEvent(event: LineWebhookEvent): Promise<void> {
-    if (!event.message || !event.replyToken) {
-      Logger.warn('メッセージイベントに必要なフィールドがありません');
+    if (!event.message) {
+      Logger.warn('メッセージイベントに message フィールドがありません');
       return;
     }
 
-    const userId = event.source.userId;
+    const userId = event.source?.userId;
+    const targetId = this.getTargetId(event);
     const message = event.message;
-    
-    Logger.info('ユーザーメッセージを処理中', { 
+
+    Logger.info('ユーザーメッセージを処理中', {
       userId,
+      targetId,
       messageType: message.type,
-      messageText: message.text?.substring(0, 50) + '...'
+      messageText: message.text?.substring(0, 50) + (message.text && message.text.length > 50 ? '...' : '')
     });
 
     try {
@@ -102,27 +119,35 @@ export class LineBotHandler {
       // メッセージタイプに応じて処理
       switch (message.type) {
         case 'text':
-          response = await this.processLegalQuery(message.text || '', userId);
+          if (event.source?.type === 'user' && userId) {
+            void this.showLoadingIndicator(userId);
+          }
+          response = await this.processLegalQuery(message.text || '', targetId || 'anonymous');
           break;
         default:
           response = '申し訳ありませんが、テキストメッセージのみ対応しています。';
       }
 
-      // 返信を送信
-      await this.replyMessage(event.replyToken, response);
-      
+      // 返信を送信（replyToken 失効時は pushMessage にフォールバック）
+      await this.sendResponse(event.replyToken, targetId, response);
+
     } catch (error) {
-      Logger.error('メッセージ処理に失敗しました', { error, userId });
-      await this.replyMessage(
-        event.replyToken, 
-        '申し訳ありませんが、現在サービスに問題が発生しています。しばらくしてから再度お試しください。'
-      );
+      Logger.error('メッセージ処理に失敗しました', { error, userId, targetId });
+      try {
+        await this.sendResponse(
+          event.replyToken,
+          targetId,
+          '申し訳ありませんが、現在サービスに問題が発生しています。しばらくしてから再度お試しください。'
+        );
+      } catch (notifyError) {
+        Logger.error('エラー通知の送信にも失敗しました', { error: notifyError, targetId });
+      }
     }
   }
 
   private async handleFollowEvent(event: LineWebhookEvent): Promise<void> {
     const welcomeMessage = `法的アシスタントへようこそ！
-    
+
 法律に関するご質問をお気軽にどうぞ。契約、労働法、消費者保護など、さまざまな法的問題についてアドバイスいたします。
 
 使い方：
@@ -130,51 +155,72 @@ export class LineBotHandler {
 ・複雑な調査が必要な場合は少し時間がかかることがあります
 ・専門的な法的判断が必要な場合は弁護士への相談をお勧めします`;
 
-    if (event.replyToken) {
-      await this.replyMessage(event.replyToken, welcomeMessage);
-    }
+    await this.sendResponse(event.replyToken, this.getTargetId(event), welcomeMessage);
   }
 
   private async handleUnfollowEvent(event: LineWebhookEvent): Promise<void> {
-    Logger.info('ユーザーのアンフォロー', { userId: event.source.userId });
+    Logger.info('ユーザーのアンフォロー', { userId: event.source?.userId });
   }
 
   private async handlePostbackEvent(event: LineWebhookEvent): Promise<void> {
-    Logger.info('ポストバックイベントの処理', { 
-      userId: event.source.userId,
-      data: event.postback?.data 
+    Logger.info('ポストバックイベントの処理', {
+      userId: event.source?.userId,
+      data: event.postback?.data
     });
-    
+
     // ここでは特定のポストバックデータを処理できます
-    if (event.replyToken && event.postback?.data) {
-      await this.replyMessage(event.replyToken, `選択されたオプション: ${event.postback.data}`);
+    if (event.postback?.data) {
+      await this.sendResponse(
+        event.replyToken,
+        this.getTargetId(event),
+        `選択されたオプション: ${event.postback.data}`
+      );
     }
   }
 
-  private async processLegalQuery(query: string, userId: string): Promise<string> {
+  private async processLegalQuery(query: string, targetId: string): Promise<string> {
     if (!query.trim()) {
       return '有効な質問を入力してください。';
     }
-  
-    Logger.info('法律クエリの処理', { 
-      userId,
-      query: query.substring(0, 100) + '...'
+
+    Logger.info('法律クエリの処理', {
+      targetId,
+      query: query.substring(0, 100) + (query.length > 100 ? '...' : '')
     });
-  
+
     try {
       // ユーザーごとにセッションを維持（会話の継続性）
-      const sessionId = `line_${userId}`;
+      const sessionId = `line_${targetId}`;
+      const modelConfig = this.modelManager.resolveModel();
+      const legalAgent = await this.memoryManager.getOrCreateAgent(modelConfig);
 
       let response = '';
-      let sawDelta = false;
-      const stream = await this.legalAgent.getStream(query, sessionId);
+      let sawDeltaInStep = false;
+      let streamError: string | null = null;
+
+      const stream = await legalAgent.getStream(query, sessionId);
       for await (const event of stream) {
-        if (event.type === 'assistant/delta') {
+        if (event.type === 'step/start') {
+          sawDeltaInStep = false;
+        } else if (event.type === 'assistant/delta') {
           response += event.data.text;
-          sawDelta = true;
-        } else if (event.type === 'assistant/message' && !sawDelta) {
+          sawDeltaInStep = true;
+        } else if (event.type === 'assistant/message' && !sawDeltaInStep) {
           response += event.data.text;
+        } else if (event.type === 'error') {
+          streamError = event.data.message;
         }
+      }
+
+      response = response.trim();
+      if (!response) {
+        if (streamError) {
+          Logger.error('法律クエリ処理中にエージェントエラーが発生しました', {
+            targetId,
+            error: streamError,
+          });
+        }
+        return '申し訳ありませんが、回答の生成に失敗しました。しばらくしてからもう一度お試しください。';
       }
 
       // LINE のテキスト上限は 5000 文字。余裕を持って切り詰める
@@ -184,8 +230,63 @@ export class LineBotHandler {
 
       return response;
     } catch (error) {
-      Logger.error('法律クエリの処理に失敗しました', { error, userId, query });
+      Logger.error('法律クエリの処理に失敗しました', { error, targetId, query });
       return '申し訳ありませんが、質問の処理中にエラーが発生しました。もう一度お試しください。';
+    }
+  }
+
+  private getTargetId(event: LineWebhookEvent): string | undefined {
+    return event.source?.userId || event.source?.groupId || event.source?.roomId;
+  }
+
+  private async showLoadingIndicator(chatId: string): Promise<void> {
+    if (!this.client) return;
+    try {
+      await this.client.showLoadingAnimation({
+        chatId,
+        loadingSeconds: 60,
+      });
+    } catch (error) {
+      Logger.debug('ローディングアニメーション表示に失敗しました（処理は継続）', {
+        chatId,
+        error: (error as Error).message,
+      });
+    }
+  }
+
+  /**
+   * replyMessage で返信を試み、replyToken 失効等で失敗した場合は pushMessage へフォールバックする
+   */
+  private async sendResponse(
+    replyToken: string | undefined,
+    targetId: string | undefined,
+    message: string
+  ): Promise<void> {
+    const text = message.trim();
+    if (!text) {
+      Logger.warn('空のメッセージ送信をスキップしました');
+      return;
+    }
+
+    if (replyToken && !VERIFY_DUMMY_REPLY_TOKENS.has(replyToken)) {
+      try {
+        await this.replyMessage(replyToken, text);
+        return;
+      } catch (replyError) {
+        if (!targetId) {
+          throw replyError;
+        }
+        Logger.warn('replyMessage に失敗したため pushMessage にフォールバックします', {
+          targetId,
+          error: (replyError as Error).message,
+        });
+      }
+    }
+
+    if (targetId) {
+      await this.pushMessage(targetId, text);
+    } else {
+      Logger.error('replyToken も送信先 ID もないためメッセージを送信できません');
     }
   }
 

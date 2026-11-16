@@ -1,6 +1,6 @@
 import { config } from '../config/environment.js';
 import { Logger } from '../utils/logger.js';
-import { ExtendedRequest } from '../types/server';
+import type { ExtendedRequest } from '../types/server.js';
 import { validateSignature } from '@line/bot-sdk';
 import { Response } from 'express';
 
@@ -41,7 +41,7 @@ export const lineSignatureMiddleware = async (
     }
 
     // 署名を検証
-    const isValid = validateSignature(rawBody.toString(), config.line.channelSecret, signature);
+    const isValid = validateSignature(rawBody, config.line.channelSecret, signature);
     
     if (!isValid) {
       Logger.warn('LINE 署名検証に失敗しました');

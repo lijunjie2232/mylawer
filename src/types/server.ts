@@ -11,9 +11,11 @@ export interface LineMessage {
 // LINE Bot webhook イベント
 export interface LineWebhookEvent {
   type: string;
-  replyToken: string;
+  replyToken?: string;
   source: {
-    userId: string;
+    userId?: string;
+    groupId?: string;
+    roomId?: string;
     type: string;
   };
   message?: LineMessage;
