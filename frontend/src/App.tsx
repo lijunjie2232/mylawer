@@ -21,9 +21,12 @@ import {
   DescriptionOutlined as FileTextIcon,
   EditOutlined as EditIcon,
   Gavel as LawIcon,
+  GitHub as GitHubIcon,
   KeyboardArrowDown as ScrollDownIcon,
   Menu as MenuIcon,
+  OpenInNew as OpenInNewIcon,
   PictureAsPdfOutlined as PdfIcon,
+  RocketLaunchOutlined as RocketIcon,
   UnfoldLess as CollapseAllIcon,
   UnfoldMore as ExpandAllIcon,
   VisibilityOutlined as DetailIcon,
@@ -1403,17 +1406,46 @@ const App: React.FC = () => {
           <Alert
             onClose={() => setDemoWarningOpen(false)}
             severity="info"
-            variant="outlined"
             sx={{
               width: '100%',
               maxWidth: 560,
+              px: 2,
+              py: 1.5,
               bgcolor: 'background.paper',
-              borderRadius: '14px',
-              boxShadow: '0 6px 24px rgba(0,0,0,0.12)',
-              '& .MuiAlert-message': { width: '100%' },
+              color: 'text.primary',
+              borderRadius: '16px',
+              border: '1px solid',
+              borderColor: isDarkMode ? 'rgba(96, 143, 255, 0.28)' : 'rgba(59, 108, 245, 0.22)',
+              boxShadow: isDarkMode
+                ? '0 12px 32px rgba(0, 0, 0, 0.45)'
+                : '0 10px 30px rgba(15, 23, 42, 0.12)',
+              '& .MuiAlert-icon': {
+                color: 'primary.main',
+                mt: 0.15,
+                mr: 1.25,
+                p: 0,
+              },
+              '& .MuiAlert-message': {
+                width: '100%',
+                p: 0,
+              },
+              '& .MuiAlert-action': {
+                pt: 0,
+                mr: -0.75,
+                alignItems: 'flex-start',
+              },
             }}
           >
-            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+            <Typography
+              variant="subtitle2"
+              sx={{
+                fontWeight: 700,
+                fontSize: '0.875rem',
+                color: 'text.primary',
+                mb: 1,
+                lineHeight: 1.4,
+              }}
+            >
               デモ環境についてのお知らせ
             </Typography>
             <Box
@@ -1422,29 +1454,91 @@ const App: React.FC = () => {
                 m: 0,
                 pl: 2.25,
                 color: 'text.secondary',
-                fontSize: '0.75rem',
-                lineHeight: 1.6,
-                '& li + li': { mt: 0.25 },
+                fontSize: '0.78rem',
+                lineHeight: 1.65,
+                '& li + li': { mt: 0.6 },
+                '& li::marker': {
+                  color: 'primary.main',
+                },
               }}
             >
               <li>
                 無料モデル利用のため応答に時間がかかる場合があります。会話履歴の保存にはログインが必要です。
               </li>
               <li>
-                個人情報や機密情報はアップロード・入力しないでください。本デモ環境では質問内容や送信データの保護について責任を負いかねます（プライベート構築:{' '}
-                <a
-                  href="https://github.com/lijunjie2232/mylawer"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: theme.palette.primary.main }}
-                >
-                  GitHub
-                </a>
-                ）。
-              </li>
-              <li>
                 現在このデモ環境にはOCRサーバーがないため、アップロードできるファイルはテキストベースのファイル（テキスト埋め込みPDFを含む）のみ対応しています。
               </li>
+              <li>
+                個人情報や機密情報はアップロード・入力しないでください。本デモ環境では質問内容や送信データの保護について責任を負いかねます。
+              </li>
+            </Box>
+
+            <Box
+              sx={{
+                mt: 1.5,
+                px: 1.5,
+                py: 1.25,
+                borderRadius: '11px',
+                background: isDarkMode
+                  ? 'linear-gradient(135deg, rgba(96, 143, 255, 0.14) 0%, rgba(96, 143, 255, 0.06) 100%)'
+                  : 'linear-gradient(135deg, rgba(59, 108, 245, 0.08) 0%, rgba(59, 108, 245, 0.03) 100%)',
+                border: '1px solid',
+                borderColor: isDarkMode ? 'rgba(96, 143, 255, 0.28)' : 'rgba(59, 108, 245, 0.2)',
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.4 }}>
+                <RocketIcon sx={{ fontSize: 16, color: 'primary.main', flexShrink: 0 }} />
+                <Typography
+                  sx={{
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    color: 'text.primary',
+                    lineHeight: 1.4,
+                  }}
+                >
+                  より高速で安定した利用をご希望の方へ
+                </Typography>
+              </Box>
+              <Typography
+                sx={{
+                  fontSize: '0.75rem',
+                  color: 'text.secondary',
+                  lineHeight: 1.55,
+                  mb: 0.85,
+                }}
+              >
+                プライベートデプロイメントをおすすめします。
+              </Typography>
+              <Box
+                component="a"
+                href="https://github.com/lijunjie2232/mylawer"
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 0.65,
+                  px: 1.15,
+                  py: 0.45,
+                  borderRadius: '8px',
+                  fontSize: '0.73rem',
+                  fontWeight: 600,
+                  color: 'primary.main',
+                  bgcolor: isDarkMode ? 'rgba(96, 143, 255, 0.14)' : 'rgba(59, 108, 245, 0.09)',
+                  border: '1px solid',
+                  borderColor: isDarkMode ? 'rgba(96, 143, 255, 0.3)' : 'rgba(59, 108, 245, 0.22)',
+                  textDecoration: 'none',
+                  transition: 'background-color 0.15s ease, border-color 0.15s ease',
+                  '&:hover': {
+                    bgcolor: isDarkMode ? 'rgba(96, 143, 255, 0.22)' : 'rgba(59, 108, 245, 0.15)',
+                    borderColor: 'primary.main',
+                  },
+                }}
+              >
+                <GitHubIcon sx={{ fontSize: 14 }} />
+                <span>lijunjie2232/mylawer</span>
+                <OpenInNewIcon sx={{ fontSize: 12, opacity: 0.8 }} />
+              </Box>
             </Box>
           </Alert>
         </Snackbar>
